@@ -90,7 +90,7 @@ function buildManifest(config) {
 
   return {
     id: 'community.davinotti.classifiche',
-    version: '1.2.0',
+    version: '1.2.1',
     name: 'Davinotti Classifiche',
     description: 'Classifiche e migliori film per categoria da davinotti.com',
     resources: ['catalog', 'meta'],
