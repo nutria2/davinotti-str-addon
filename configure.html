@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurazione Davinotti Addon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            color: #444;
+            font-size: 18px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .genres-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .genre-checkbox {
+            display: none;
+        }
+
+        .genre-label {
+            display: block;
+            padding: 12px 16px;
+            background: #f5f5f5;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-size: 14px;
+            text-transform: capitalize;
+        }
+
+        .genre-checkbox:checked + .genre-label {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .genre-label:hover {
+            border-color: #667eea;
+            transform: translateY(-1px);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .install-url {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            display: none;
+        }
+
+        .install-url.show {
+            display: block;
+        }
+
+        .quick-select {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .quick-select button {
+            flex: none;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Davinotti Addon</h1>
+        <p class="subtitle">Configura le categorie di film da mostrare in Stremio</p>
+
+        <div class="section">
+            <div class="section-title">Seleziona i generi</div>
+
+            <div class="quick-select">
+                <button class="btn-secondary" onclick="selectAll()">Seleziona tutti</button>
+                <button class="btn-secondary" onclick="deselectAll()">Deseleziona tutti</button>
+            </div>
+
+            <div class="genres-grid" id="genresContainer">
+                <!-- I generi verranno inseriti qui tramite JavaScript -->
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" onclick="generateInstallUrl()">Genera URL di installazione</button>
+        </div>
+
+        <div class="install-url" id="installUrl"></div>
+
+        <div class="info-box">
+            <strong>Come usare:</strong> Seleziona i generi che vuoi vedere, clicca su "Genera URL", copia l'URL e incollalo in Stremio → Addons → Install from URL.
+        </div>
+    </div>
+
+    <script>
+        const genres = [
+            'action', 'animazione', 'avventura', 'biografico', 'commedia',
+            'documentario', 'drammatico', 'fantascienza', 'fantastico',
+            'giallo', 'guerra', 'horror', 'thriller', 'western'
+        ];
+
+        // Generi predefiniti
+        const defaultGenres = ['commedia', 'drammatico', 'thriller'];
+
+        // Popolate la griglia dei generi
+        function initGenres() {
+            const container = document.getElementById('genresContainer');
+            genres.forEach(genre => {
+                const div = document.createElement('div');
+                const checked = defaultGenres.includes(genre) ? 'checked' : '';
+                div.innerHTML = `
+                    <input type="checkbox" class="genre-checkbox" id="genre_${genre}" value="${genre}" ${checked}>
+                    <label class="genre-label" for="genre_${genre}">${genre}</label>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function selectAll() {
+            document.querySelectorAll('.genre-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        function deselectAll() {
+            document.querySelectorAll('.genre-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        function generateInstallUrl() {
+            const selectedGenres = Array.from(document.querySelectorAll('.genre-checkbox:checked'))
+                .map(cb => cb.value);
+
+            if (selectedGenres.length === 0) {
+                alert('Seleziona almeno un genere!');
+                return;
+            }
+
+            const config = {
+                genres: selectedGenres
+            };
+
+            const configEncoded = btoa(JSON.stringify(config));
+            const baseUrl = window.location.origin;
+            const installUrl = `${baseUrl}/${configEncoded}/manifest.json`;
+
+            const urlDiv = document.getElementById('installUrl');
+            urlDiv.innerHTML = `
+                <strong>URL di installazione:</strong><br>
+                <a href="${installUrl}" target="_blank">${installUrl}</a><br><br>
+                <button class="btn-primary" onclick="copyToClipboard('${installUrl}')">📋 Copia URL</button>
+                <button class="btn-secondary" onclick="openInStremio('${installUrl}')">🚀 Apri in Stremio</button>
+            `;
+            urlDiv.classList.add('show');
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('URL copiato negli appunti!');
+            }).catch(err => {
+                console.error('Errore nella copia:', err);
+            });
+        }
+
+        function openInStremio(url) {
+            window.location.href = `stremio://${url}`;
+        }
+
+        // Inizializza i generi al caricamento
+        initGenres();
+    </script>
+</body>
+</html>
