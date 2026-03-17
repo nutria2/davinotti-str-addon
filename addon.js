@@ -220,7 +220,7 @@ async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
         id: searchData.imdbId || baseMeta.id,
         poster: searchData.poster || baseMeta.poster || FALLBACK_POSTER,
         background: searchData.background || baseMeta.background,
-        description: searchData.overview || baseMeta.description,
+        description: searchData.overview  || baseMeta.description ,
         releaseInfo: searchData.releaseDate || baseMeta.releaseInfo || '',
         imdbId: searchData.imdbId || baseMeta.imdbId,
         tmdbId: searchData.tmdbId || baseMeta.tmdbId
@@ -246,7 +246,7 @@ async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
     id: imdbId || baseMeta.id,
     poster,
     background,
-    description: tmdbData.overview || baseMeta.description,
+    description: baseMeta.description || tmdbData.overview ,
     releaseInfo: tmdbData.release_date || baseMeta.releaseInfo || '',
     imdbRating: tmdbData.vote_average ? String(tmdbData.vote_average) : undefined,
     genres: Array.isArray(tmdbData.genres) && tmdbData.genres.length
@@ -309,7 +309,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
       name: pageTitle,
       poster: baseMeta.poster || posterFromPage || FALLBACK_POSTER,
       background: baseMeta.background || posterFromPage || undefined,
-      description: description || baseMeta.description,
+      description: baseMeta.description || description || '',
       releaseInfo: year || baseMeta.releaseInfo || '',
       website: davinottiUrl,
       links: [
