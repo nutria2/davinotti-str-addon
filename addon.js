@@ -12,6 +12,7 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
 const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const metaCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+const DAVINOTTI_SUFFIX = ' (fonte DAVINOTTI.COM)';
 
 const GENRE_IDS = {
   action: '336',
@@ -90,7 +91,7 @@ function buildManifest(config) {
 
   return {
     id: 'community.davinotti.classifiche',
-    version: '1.2.1',
+    version: '1.2.2',
     name: 'Davinotti Classifiche',
     description: 'Classifiche e migliori film per categoria da davinotti.com',
     resources: ['catalog', 'meta'],
@@ -185,6 +186,7 @@ async function getTmdbPoster(title, year) {
 }
 
 
+
 async function fetchTmdbMovieById(tmdbId) {
   if (!TMDB_API_KEY || !tmdbId) return null;
 
@@ -205,6 +207,13 @@ async function fetchTmdbMovieById(tmdbId) {
   }
 }
 
+function withDavinottiSource(text) {
+  const clean = (text || '').trim();
+  if (!clean) return 'Sinossi non disponibile (fonte DAVINOTTI.COM)';
+  if (clean.includes('(fonte DAVINOTTI.COM)')) return clean;
+  return `${clean} (fonte DAVINOTTI.COM)`;
+}
+
 async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
   let tmdbData = null;
 
@@ -220,7 +229,7 @@ async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
         id: searchData.imdbId || baseMeta.id,
         poster: searchData.poster || baseMeta.poster || FALLBACK_POSTER,
         background: searchData.background || baseMeta.background,
-        description: searchData.overview  || baseMeta.description ,
+        description: withDavinottiSource(baseMeta.description || searchData.overview ),
         releaseInfo: searchData.releaseDate || baseMeta.releaseInfo || '',
         imdbId: searchData.imdbId || baseMeta.imdbId,
         tmdbId: searchData.tmdbId || baseMeta.tmdbId
@@ -238,24 +247,21 @@ async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
     ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
     : baseMeta.background;
 
-  const ext = await getTmdbExternalIds(tmdbId);
-  const imdbId = ext && ext.imdb_id ? ext.imdb_id : baseMeta.imdbId;
-
   return {
     ...baseMeta,
-    id: imdbId || baseMeta.id,
     poster,
     background,
-    description: baseMeta.description || tmdbData.overview ,
+    description: withDavinottiSource(baseMeta.description || tmdbData.overview ),
     releaseInfo: tmdbData.release_date || baseMeta.releaseInfo || '',
     imdbRating: tmdbData.vote_average ? String(tmdbData.vote_average) : undefined,
     genres: Array.isArray(tmdbData.genres) && tmdbData.genres.length
       ? tmdbData.genres.map(g => g.name)
       : baseMeta.genres,
-    imdbId,
-    tmdbId
+    tmdbId: tmdbId || baseMeta.tmdbId,
+    imdbId: baseMeta.imdbId
   };
 }
+
 
 async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   const cacheKey = `detail:${baseMeta.id}`;
@@ -276,15 +282,17 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     const textBody = $('body').text().replace(/\s+/g, ' ');
     const year = extractYear(textBody) || baseMeta.releaseInfo || '';
 
-    let description =
-      $('meta[name="description"]').attr('content') ||
-      $('.field-name-body').text().trim() ||
-      $('.node-film .content').text().trim() ||
-      baseMeta.description;
+let description =
+  $('meta[name="description"]').attr('content') ||
+  $('meta[property="og:description"]').attr('content') ||
+  $('.field-name-body').text().trim() ||
+  $('.node-film .content').text().trim() ||
+  $('.content').first().text().trim() ||
+  baseMeta.description;
 
-    if (description) {
-      description = description.replace(/\s+/g, ' ').trim().slice(0, 1000);
-    }
+if (description) {
+  description = description.replace(/\s+/g, ' ').trim().slice(0, 1200);
+}
 
     let tmdbId = baseMeta.tmdbId || null;
     $('a[href*="themoviedb.org/movie/"]').each((_, el) => {
@@ -309,7 +317,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
       name: pageTitle,
       poster: baseMeta.poster || posterFromPage || FALLBACK_POSTER,
       background: baseMeta.background || posterFromPage || undefined,
-      description: baseMeta.description || description || '',
+      description: withDavinottiSource(baseMeta.description || description ),
       releaseInfo: year || baseMeta.releaseInfo || '',
       website: davinottiUrl,
       links: [
