@@ -381,6 +381,14 @@ async function scrapeGenreMovies(genre, skip = 0) {
       const year = extractYear(rawName);
 
       const tmdb = await getTmdbPoster(name, year);
+	  
+	  console.log('DEBUG TMDB', {
+		  title: name,
+		  year,
+		  tmdbId: tmdb ? tmdb.tmdbId : null,
+		  imdbId: tmdb ? tmdb.imdbId : null
+		});
+	  
       const finalId = (tmdb && tmdb.imdbId) ? tmdb.imdbId : davinottiId;
 
       if (seen.has(finalId)) continue;
