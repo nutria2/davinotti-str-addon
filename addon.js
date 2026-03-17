@@ -1,271 +1,321 @@
-// const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
-// const { addonBuilder } = require("stremio-addon-sdk");
-//const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
-//const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
-//console.log("Cosa contiene l'SDK:", Object.keys(stremio));
-
-const stremio = require("stremio-addon-sdk");
-
-// Dato che il log dice che 'stremio' è [Function: Addon]
-// usiamo quella funzione direttamente come costruttore.
-const addonBuilder = stremio; 
-
-// Per la funzione serveHTTP, solitamente è attaccata alla funzione stessa
-const serveHTTP = stremio.serveHTTP || require("stremio-addon-sdk/src/getRouter"); 
-
-console.log("SDK caricato come funzione. Procedo...");
-console.log("--- DEBUG SDK ---");
-console.log("Contenuto:", Object.keys(sdk));
-console.log("È una funzione?:", typeof sdk.addonBuilder);
-console.log("-----------------");
-
-
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
-const path = require('path');
-const fs = require('fs');
-const http = require('http');
 
-// Cache per 6 ore
-const cache = new NodeCache({ stdTTL: 21600 });
+const PORT = process.env.PORT || 7000;
+const BASE_URL = process.env.BASE_URL || '';
+const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 
-// Generi disponibili su davinotti.com
-const AVAILABLE_GENRES = [
-    'action', 'animali assassini', 'animazione', 'antologia', 'arti marziali',
-    'avventura', 'biografico', 'comico', 'commedia', 'corto/mediometraggio',
-    'documentario', 'drammatico', 'erotico', 'fantascienza', 'fantastico',
-    'fiction', 'gangster/noir', 'giallo', 'guerra', 'horror', 'musicale',
-    'peplum', 'poliziesco', 'sentimentale', 'spaghetti western', 'spionaggio',
-    'teatro', 'thriller', 'western'
-];
-
-// Mappa generi a ID (da esplorare manualmente o via scraping)
 const GENRE_IDS = {
-    'action': '101',
-    'animazione': '103',
-    'avventura': '105',
-    'biografico': '208',
-    'commedia': '107',
-    'documentario': '111',
-    'drammatico': '113',
-    'fantascienza': '117',
-    'fantastico': '119',
-    'giallo': '123',
-    'guerra': '125',
-    'horror': '127',
-    'thriller': '143',
-    'western': '147'
+  action: '101',
+  animazione: '103',
+  avventura: '105',
+  biografico: '208',
+  commedia: '107',
+  documentario: '111',
+  drammatico: '113',
+  fantascienza: '117',
+  fantastico: '119',
+  giallo: '123',
+  guerra: '125',
+  horror: '127',
+  thriller: '143',
+  western: '147'
 };
 
-// Funzione per creare il manifest dinamico basato sulla configurazione
-function createManifest(config = {}) {
-    const selectedGenres = config.genres || ['commedia', 'drammatico', 'thriller'];
+const DEFAULT_GENRES = ['commedia', 'drammatico', 'thriller'];
 
-    const catalogs = selectedGenres.map(genre => ({
-        type: 'movie',
-        id: `davinotti_${genre.replace(/\s+/g, '_')}`,
-        name: `Davinotti - ${genre.charAt(0).toUpperCase() + genre.slice(1)}`,
-        extra: [{ name: 'skip', isRequired: false }]
-    }));
+function safeJsonParse(str, fallback) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
+}
+
+function decodeConfigSegment(segment) {
+  if (!segment) return { genres: DEFAULT_GENRES };
+
+  try {
+    const normalized = decodeURIComponent(segment);
+    const json = Buffer.from(normalized, 'base64').toString('utf8');
+    const parsed = safeJsonParse(json, { genres: DEFAULT_GENRES });
+
+    if (!parsed || !Array.isArray(parsed.genres) || parsed.genres.length === 0) {
+      return { genres: DEFAULT_GENRES };
+    }
+
+    const validGenres = parsed.genres
+      .map(g => String(g).trim().toLowerCase())
+      .filter(g => GENRE_IDS[g]);
 
     return {
-        id: 'community.davinotti',
-        version: '1.0.0',
-        name: 'Davinotti Film',
-        description: 'I migliori film dalle categorie di davinotti.com',
-        resources: ['catalog'],
-        types: ['movie'],
-        catalogs: catalogs,
-        idPrefixes: ['tt', 'dv'],
-        behaviorHints: {
-            configurable: true,
-            configurationRequired: false
-        }
+      genres: validGenres.length ? validGenres : DEFAULT_GENRES
     };
+  } catch {
+    return { genres: DEFAULT_GENRES };
+  }
 }
 
-// Funzione di scraping per ottenere i film da una categoria
+function encodeConfig(config) {
+  return Buffer.from(JSON.stringify(config), 'utf8').toString('base64');
+}
+
+function titleCase(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function buildManifest(config) {
+  const genres = config.genres || DEFAULT_GENRES;
+
+  return {
+    id: 'community.davinotti.classifiche',
+    version: '1.0.0',
+    name: 'Davinotti Classifiche',
+    description: 'Classifiche e migliori film per categoria da davinotti.com',
+    resources: ['catalog'],
+    types: ['movie'],
+    idPrefixes: ['dv'],
+    catalogs: genres.map(genre => ({
+      type: 'movie',
+      id: `davinotti_${genre}`,
+      name: `Davinotti - ${titleCase(genre)}`,
+      extra: [{ name: 'skip', isRequired: false }]
+    })),
+    behaviorHints: {
+      configurable: true,
+      configurationRequired: false
+    }
+  };
+}
+
+function normalizeLink(link) {
+  if (!link) return '';
+  if (link.startsWith('http://') || link.startsWith('https://')) return link;
+  return `https://www.davinotti.com${link}`;
+}
+
 async function scrapeGenreMovies(genre, skip = 0) {
-    const cacheKey = `genre_${genre}_${skip}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
+  const cacheKey = `genre:${genre}:${skip}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
 
-    try {
-        const genreId = GENRE_IDS[genre];
-        if (!genreId) {
-            console.log(`Genere ${genre} non trovato nella mappa`);
-            return [];
-        }
+  const genreId = GENRE_IDS[genre];
+  if (!genreId) return [];
 
-        const url = `https://www.davinotti.com/film-per-genere/${genre}/${genreId}`;
-        console.log(`Scraping URL: ${url}`);
+  const url = `https://www.davinotti.com/film-per-genere/${genre}/${genreId}`;
 
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            timeout: 10000
-        });
+  try {
+    const response = await axios.get(url, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/1.0; +Render)'
+      }
+    });
 
-        const $ = cheerio.load(response.data);
-        const movies = [];
+    const $ = cheerio.load(response.data);
+    const metas = [];
+    const seen = new Set();
 
-        // Adatta i selettori alla struttura HTML di davinotti.com
-        $('.film-item, .movie-item, article, .list-item').each((i, elem) => {
-            if (i >= skip && movies.length < 100) {
-                const $elem = $(elem);
-                const title = $elem.find('h2, h3, .title, a').first().text().trim();
-                const link = $elem.find('a').first().attr('href');
-                const year = $elem.find('.year, .anno').text().trim() || '';
+    $('a[href*="/film/"]').each((index, el) => {
+      if (metas.length >= 100) return;
 
-                if (title && link) {
-                    // Estrai ID dal link
-                    const match = link.match(/\/film\/[^\/]+\/(\d+)/);
-                    const id = match ? `dv${match[1]}` : `dv${Date.now()}_${i}`;
+      const href = $(el).attr('href');
+      const name = $(el).text().trim().replace(/\s+/g, ' ');
 
-                    movies.push({
-                        id: id,
-                        type: 'movie',
-                        name: title,
-                        year: year || undefined,
-                        poster: undefined,
-                        genres: [genre],
-                        description: `Film dalla categoria ${genre} su davinotti.com`,
-                        links: [{
-                            name: 'Davinotti',
-                            category: 'recensione',
-                            url: `https://www.davinotti.com${link}`
-                        }]
-                    });
-                }
-            }
-        });
+      if (!href || !name || name.length < 2) return;
 
-        // Se non trova elementi con i selettori precedenti, prova un approccio alternativo
-        if (movies.length === 0) {
-            $('a[href*="/film/"]').each((i, elem) => {
-                if (i >= skip && movies.length < 50) {
-                    const $elem = $(elem);
-                    const title = $elem.text().trim();
-                    const link = $elem.attr('href');
+      const match = href.match(/\/film\/[^/]+\/(\d+)/);
+      const numericId = match ? match[1] : null;
+      const metaId = numericId ? `dv${numericId}` : `dv_${genre}_${index}`;
 
-                    if (title && link && title.length > 3) {
-                        const match = link.match(/\/film\/[^\/]+\/(\d+)/);
-                        const id = match ? `dv${match[1]}` : `dv${Date.now()}_${i}`;
+      if (seen.has(metaId)) return;
+      seen.add(metaId);
 
-                        movies.push({
-                            id: id,
-                            type: 'movie',
-                            name: title,
-                            genres: [genre],
-                            description: `Film dalla categoria ${genre} su davinotti.com`,
-                            links: [{
-                                name: 'Davinotti',
-                                category: 'recensione',
-                                url: link.startsWith('http') ? link : `https://www.davinotti.com${link}`
-                            }]
-                        });
-                    }
-                }
-            });
-        }
+      metas.push({
+        id: metaId,
+        type: 'movie',
+        name,
+        poster: '',
+        posterShape: 'poster',
+        description: `Film della categoria ${genre} da davinotti.com`,
+        genres: [genre],
+        links: [
+          {
+            name: 'Scheda Davinotti',
+            category: 'read',
+            url: normalizeLink(href)
+          }
+        ]
+      });
+    });
 
-        console.log(`Trovati ${movies.length} film per il genere ${genre}`);
-        cache.set(cacheKey, movies);
-        return movies;
-
-    } catch (error) {
-        console.error(`Errore nello scraping del genere ${genre}:`, error.message);
-        return [];
-    }
+    const sliced = metas.slice(skip, skip + 25);
+    cache.set(cacheKey, sliced);
+    return sliced;
+  } catch (err) {
+    console.error(`Errore scraping genere ${genre}:`, err.message);
+    return [];
+  }
 }
 
-// Crea l'addon con configurazione base
-//const builder = addonBuilder(createManifest());
-const builder = new addonBuilder(createManifest());
+function buildRouterForConfig(config) {
+  const manifest = buildManifest(config);
+  const builder = new addonBuilder(manifest);
 
-//const builder = new stremio.addonBuilder(createManifest());
+  builder.defineCatalogHandler(async ({ type, id, extra }) => {
+    if (type !== 'movie') return { metas: [] };
 
-// Handler per i cataloghi
-builder.defineCatalogHandler(async ({ type, id, extra }) => {
-    console.log(`Richiesta catalogo: type=${type}, id=${id}`);
+    const match = id.match(/^davinotti_(.+)$/);
+    if (!match) return { metas: [] };
 
-    if (type !== 'movie') {
-        return { metas: [] };
-    }
+    const genre = match[1];
+    const skip = parseInt((extra && extra.skip) || 0, 10) || 0;
+    const metas = await scrapeGenreMovies(genre, skip);
 
-    // Estrai il genere dall'ID del catalogo
-    const genreMatch = id.match(/^davinotti_(.+)$/);
-    if (!genreMatch) {
-        return { metas: [] };
-    }
-
-    const genre = genreMatch[1].replace(/_/g, ' ');
-    const skip = parseInt(extra?.skip) || 0;
-
-    const movies = await scrapeGenreMovies(genre, skip);
-
-    return { 
-        metas: movies,
-        cacheMaxAge: 21600 // 6 ore
+    return {
+      metas,
+      cacheMaxAge: 21600,
+      staleRevalidate: 3600,
+      staleError: 86400
     };
-});
+  });
 
-// Avvia il server con gestione custom per la pagina di configurazione
-const port = process.env.PORT || 7000;
-const addonInterface = builder.getInterface();
+  return getRouter(builder.getInterface());
+}
 
-// Server HTTP personalizzato
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function sendHtml(res, html) {
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(html);
+}
+
+function sendText(res, statusCode, text) {
+  res.writeHead(statusCode, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(text);
+}
+
+function renderConfigureHtml(reqHost) {
+  const filePath = path.join(__dirname, 'configure.html');
+  let html = fs.readFileSync(filePath, 'utf8');
+
+  const origin = BASE_URL || reqHost;
+
+  html = html.replace(
+    '__BASE_URL__',
+    origin.replace(/\/$/, '')
+  );
+
+  return html;
+}
+
 const server = http.createServer((req, res) => {
-    // Gestione della pagina di configurazione
-    if (req.url === '/configure' || req.url === '/configure.html') {
-        const configPath = path.join(__dirname, 'configure.html');
-
-        if (fs.existsSync(configPath)) {
-            fs.readFile(configPath, 'utf8', (err, data) => {
-                if (err) {
-                    res.writeHead(500, { 'Content-Type': 'text/plain' });
-                    res.end('Errore nel caricamento della pagina di configurazione');
-                    return;
-                }
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                res.end(data);
-            });
-        } else {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Pagina di configurazione non trovata');
-        }
-        return;
-    }
-
-    // Gestione delle richieste dell'addon
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-        addonInterface.get(req, (err, result) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: err.message }));
-                return;
-            }
-
-            res.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': '*'
-            });
-            res.end(JSON.stringify(result));
-        });
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
     });
+    return res.end();
+  }
+
+  const host = req.headers.host || `localhost:${PORT}`;
+  const protocol = (req.headers['x-forwarded-proto'] || 'http').split(',')[0];
+  const reqHost = `${protocol}://${host}`;
+
+  const url = new URL(req.url, reqHost);
+  const pathname = url.pathname;
+
+  if (pathname === '/' || pathname === '/health') {
+    return sendJson(res, 200, {
+      status: 'ok',
+      name: 'davinotti-str-addon',
+      configure: `${reqHost}/configure.html`,
+      manifest: `${reqHost}/manifest.json`
+    });
+  }
+
+  if (pathname === '/configure' || pathname === '/configure.html') {
+    try {
+      const html = renderConfigureHtml(reqHost);
+      return sendHtml(res, html);
+    } catch (err) {
+      return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
+    }
+  }
+
+  if (pathname === '/manifest.json') {
+    const router = buildRouterForConfig({ genres: DEFAULT_GENRES });
+    return router(req, res, () => sendText(res, 404, 'Not found'));
+  }
+
+  const configManifestMatch = pathname.match(/^\/([^/]+)\/manifest\.json$/);
+  if (configManifestMatch) {
+    const config = decodeConfigSegment(configManifestMatch[1]);
+    const originalUrl = req.url;
+    req.url = '/manifest.json';
+    const router = buildRouterForConfig(config);
+    return router(req, res, () => {
+      req.url = originalUrl;
+      sendText(res, 404, 'Not found');
+    });
+  }
+
+  const configCatalogMatch = pathname.match(/^\/([^/]+)\/catalog\/movie\/([^/]+)\.json$/);
+  if (configCatalogMatch) {
+    const config = decodeConfigSegment(configCatalogMatch[1]);
+    const catalogId = configCatalogMatch[2];
+    const skip = url.searchParams.get('skip');
+    const query = skip ? `?skip=${encodeURIComponent(skip)}` : '';
+    const rewritten = `/catalog/movie/${catalogId}.json${query}`;
+
+    const originalUrl = req.url;
+    req.url = rewritten;
+    const router = buildRouterForConfig(config);
+    return router(req, res, () => {
+      req.url = originalUrl;
+      sendText(res, 404, 'Not found');
+    });
+  }
+
+  const plainCatalogMatch = pathname.match(/^\/catalog\/movie\/([^/]+)\.json$/);
+  if (plainCatalogMatch) {
+    const router = buildRouterForConfig({ genres: DEFAULT_GENRES });
+    return router(req, res, () => sendText(res, 404, 'Not found'));
+  }
+
+  return sendText(res, 404, 'Not found');
 });
 
-server.listen(port, () => {
-    console.log('\n===========================================');
-    console.log('🎬 Addon Davinotti in esecuzione!');
-    console.log('===========================================');
-    console.log(`📍 Server: http://localhost:${port}`);
-    console.log(`⚙️  Configurazione: http://localhost:${port}/configure.html`);
-    console.log(`📋 Manifest: http://localhost:${port}/manifest.json`);
-    console.log('===========================================\n');
+server.listen(PORT, () => {
+  const localBase = BASE_URL || `http://localhost:${PORT}`;
+  const sampleConfig = encodeConfig({ genres: ['commedia', 'horror', 'western'] });
+
+  console.log('==========================================');
+  console.log('Davinotti Stremio Addon avviato');
+  console.log(`Porta: ${PORT}`);
+  console.log(`Base URL: ${localBase}`);
+  console.log(`Configure: ${localBase}/configure.html`);
+  console.log(`Manifest default: ${localBase}/manifest.json`);
+  console.log(`Manifest configurato: ${localBase}/${sampleConfig}/manifest.json`);
+  console.log('==========================================');
 });
