@@ -240,7 +240,10 @@
             };
 
             const configEncoded = btoa(JSON.stringify(config));
-            const baseUrl = window.location.origin;
+//            const baseUrl = window.location.origin;
+            const injectedBase = "__BASE_URL__";
+            const baseUrl = injectedBase !== "__BASE_URL__" ? injectedBase : window.location.origin;
+            
             const installUrl = `${baseUrl}/${configEncoded}/manifest.json`;
 
             const urlDiv = document.getElementById('installUrl');
