@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: stremio-davinotti
+    name: davinotti-str-addon
     env: node
     plan: free
     buildCommand: npm install
