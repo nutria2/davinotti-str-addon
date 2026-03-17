@@ -14,20 +14,20 @@ const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const metaCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 
 const GENRE_IDS = {
-  action: '101',
-  animazione: '103',
-  avventura: '105',
+  action: '336',
+  animazione: '122',
+  avventura: '144',
   biografico: '208',
   commedia: '107',
-  documentario: '111',
-  drammatico: '113',
-  fantascienza: '117',
-  fantastico: '119',
-  giallo: '123',
-  guerra: '125',
-  horror: '127',
-  thriller: '143',
-  western: '147'
+  documentario: '227',
+  drammatico: '104',
+  fantascienza: '100',
+  fantastico: '117',
+  giallo: '108',
+  guerra: '121',
+  horror: '112',
+  thriller: '111',
+  western: '123'
 };
 
 const DEFAULT_GENRES = ['commedia', 'drammatico', 'thriller'];
