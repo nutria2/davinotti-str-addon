@@ -99,7 +99,7 @@ function buildManifest(config) {
     catalogs: genres.map(genre => ({
       type: 'movie',
       id: `davinotti_${genre}`,
-      name: `Davinotti - ${titleCase(genre)} - Film`,
+      name: `Davinotti - ${titleCase(genre)}`,
       extra: [{ name: 'skip', isRequired: false }]
     })),
     behaviorHints: {
@@ -268,6 +268,39 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   }
 }
 
+
+async function getTmdbPoster(title, year) {
+  if (!TMDB_API_KEY || !title) return null;
+  try {
+    const response = await axios.get('https://api.themoviedb.org/3/search/movie', {
+      timeout: 15000,
+      params: {
+        api_key: TMDB_API_KEY,
+        language: 'it-IT',
+        query: title,
+        year: year || undefined
+      }
+    });
+
+    const results = response.data?.results || [];
+    const first = results[0];
+    if (!first || !first.poster_path) return null;
+
+    return {
+      poster: `https://image.tmdb.org/t/p/w500${first.poster_path}`,
+      background: first.backdrop_path
+        ? `https://image.tmdb.org/t/p/original${first.backdrop_path}`
+        : undefined,
+      overview: first.overview || '',
+      tmdbId: first.id
+    };
+  } catch (err) {
+    console.error(`Errore TMDB search per "${title}":`, err.message);
+    return null;
+  }
+}
+
+
 async function scrapeGenreMovies(genre, skip = 0) {
   const cacheKey = `genre:${genre}:${skip}`;
   const cached = cache.get(cacheKey);
@@ -289,35 +322,42 @@ async function scrapeGenreMovies(genre, skip = 0) {
     const $ = cheerio.load(response.data);
     const metas = [];
     const seen = new Set();
+    const elements = $('a[href*="/film/"]').toArray();
 
-    $('a[href*="/film/"]').each((index, el) => {
-      if (metas.length >= 100) return;
+    for (let index = 0; index < elements.length; index++) {
+      if (metas.length >= 100) break;
 
+      const el = elements[index];
       const href = $(el).attr('href');
       const rawName = $(el).text().trim().replace(/\s+/g, ' ');
       const name = rawName.replace(/\s+\(\d{4}\)\s*$/, '').trim();
 
-      if (!href || !name || name.length < 2) return;
+      if (!href || !name || name.length < 2) continue;
 
       const match = href.match(/\/film\/[^/]+\/(\d+)/);
       const numericId = match ? match[1] : null;
       const metaId = numericId ? `dv${numericId}` : `dv_${genre}_${index}`;
       const davinottiUrl = normalizeLink(href);
 
-      if (seen.has(metaId)) return;
+      if (seen.has(metaId)) continue;
       seen.add(metaId);
 
       const year = extractYear(rawName);
+
+      const tmdb = await getTmdbPoster(name, year);
 
       const metaPreview = {
         id: metaId,
         type: 'movie',
         name,
-        poster: FALLBACK_POSTER,
+        poster: tmdb && tmdb.poster ? tmdb.poster : FALLBACK_POSTER,
         posterShape: 'poster',
-        description: `Film della categoria ${genre} da davinotti.com`,
+        background: tmdb && tmdb.background ? tmdb.background : undefined,
+        description: tmdb && tmdb.overview
+          ? tmdb.overview
+          : `Film della categoria ${genre} da davinotti.com`,
         genres: [titleCase(genre)],
-        releaseInfo: year || '',
+        releaseInfo: year || (tmdb && tmdb.releaseDate ? tmdb.releaseDate : ''),
         links: [
           {
             name: 'Scheda Davinotti',
@@ -331,9 +371,10 @@ async function scrapeGenreMovies(genre, skip = 0) {
 
       metaCache.set(metaId, {
         ...metaPreview,
-        website: davinottiUrl
+        website: davinottiUrl,
+        tmdbId: tmdb && tmdb.tmdbId ? tmdb.tmdbId : undefined
       });
-    });
+    }
 
     const sliced = metas.slice(skip, skip + 25);
     cache.set(cacheKey, sliced);
@@ -343,6 +384,7 @@ async function scrapeGenreMovies(genre, skip = 0) {
     return [];
   }
 }
+
 
 function buildRouterForConfig(config) {
   const manifest = buildManifest(config);
