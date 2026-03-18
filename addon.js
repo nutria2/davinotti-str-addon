@@ -133,7 +133,7 @@ function buildManifest(config) {
     id: 'community.davinotti.classifiche.xml',
     version: '2.3.0',
     name: 'Davinotti Classifiche',
-    description: 'Cataloghi Davinotti da feed XML per generi e piattaforme streaming',
+    description: 'Cataloghi Davinotti per generi e piattaforme streaming',
     resources: ['catalog', 'meta'],
     types: ['movie'],
     idPrefixes: ['tt', 'dv'],
@@ -172,9 +172,11 @@ function parseXmlItems(xml) {
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
   const items = [];
   let match;
+
   while ((match = itemRegex.exec(xml)) !== null) {
     items.push(match[1]);
   }
+
   return items;
 }
 
@@ -187,22 +189,33 @@ function extractXmlValue(block, tag) {
 
 function mapXmlItemToMeta(itemXml, feedKey) {
   const feed = GENRE_FEEDS[feedKey];
-  const title = extractXmlValue(itemXml, 'title');
-  const year = extractXmlValue(itemXml, 'anno');
-  const category = extractXmlValue(itemXml, 'genere');
+
+  const title = extractXmlValue(itemXml, 't');
+  const year = extractXmlValue(itemXml, 'y');
+  const category = extractXmlValue(itemXml, 'c');
   const dvIdRaw = extractXmlValue(itemXml, 'id');
-  const imdbIdRaw = extractXmlValue(itemXml, 't_id');
-  const tmdbIdRaw = extractXmlValue(itemXml, 'i_id');
-  const link = extractXmlValue(itemXml, 'link');
-  const votes = extractXmlValue(itemXml, 'voto');
-  const reviews = extractXmlValue(itemXml, 'recensioni');
+  const imdbIdRaw = extractXmlValue(itemXml, 'i_id');
+  const tmdbIdRaw = extractXmlValue(itemXml, 't_id');
+  const link = extractXmlValue(itemXml, 'l');
+  const votes = extractXmlValue(itemXml, 'v');
+  const reviews = extractXmlValue(itemXml, 'vc');
 
   const imdbId = imdbIdRaw && imdbIdRaw.startsWith('tt') ? imdbIdRaw : '';
   const tmdbId = tmdbIdRaw && /^\d+$/.test(tmdbIdRaw) ? tmdbIdRaw : '';
   const davinottiId = dvIdRaw ? `dv${dvIdRaw}` : '';
   const finalId = imdbId || davinottiId;
 
-  if (!title || !finalId || !link) return null;
+  if (!title || !finalId || !link) {
+    console.log('ITEM SCARTATO DETTAGLIO', {
+      title,
+      dvIdRaw,
+      imdbIdRaw,
+      tmdbIdRaw,
+      finalId,
+      link
+    });
+    return null;
+  }
 
   const fallbackDescription = `Film dalla classifica ${feedDisplayName(feedKey)} su davinotti.com`;
   const descriptionParts = [];
@@ -229,6 +242,7 @@ function mapXmlItemToMeta(itemXml, feedKey) {
     feedName: feed.name
   };
 }
+
 
 async function enrichPreviewWithTmdb(meta) {
   if (!meta || !meta.tmdbId) return meta;
@@ -266,21 +280,35 @@ async function fetchFeedMetas(feedKey) {
     const items = parseXmlItems(xml);
     const metas = [];
     const seen = new Set();
+	
+	
+	console.log('FEED KEY:', feedKey);
+console.log('FEED URL:', url);
+console.log('XML LENGTH:', typeof xml === 'string' ? xml.length : 0);
+console.log('ITEMS PARSED:', items.length);
+
 
     for (const itemXml of items) {
       const baseMeta = mapXmlItemToMeta(itemXml, feedKey);
+	  if (!baseMeta) {
+		  console.log('ITEM SCARTATO');
+		  continue;
+		}
       if (!baseMeta || seen.has(baseMeta.id)) continue;
       seen.add(baseMeta.id);
       const enriched = await enrichPreviewWithTmdb(baseMeta);
       metas.push(enriched);
       metaCache.set(enriched.id, enriched);
       if (enriched.davinottiId) metaCache.set(enriched.davinottiId, enriched);
+	  //console.log('FIRST ITEM TITLE:', items[0] ? extractXmlValue(items[0], 'title') : 'nessuno');
     }
 
     cache.set(cacheKey, metas);
-    return metas;
+
+    
+	return metas;
   } catch (err) {
-    console.error(`Errore feed XML ${feedKey}:`, err.message);
+    //console.error(`Errore feed XML ${feedKey}:`, err.message);
     return [];
   }
 }

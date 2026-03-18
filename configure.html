@@ -174,11 +174,16 @@
         <button class="secondary" id="clearBtn">Deseleziona tutto</button>
       </div>
 
-      <div class="result" id="resultBox">
-        <div><strong>Manifest URL:</strong></div>
-        <div style="margin-top:8px"><a id="manifestLink" href="#" target="_blank" rel="noopener noreferrer"></a></div>
-        <div class="hint">Apri questo URL per installare l'addon in Stremio.</div>
-      </div>
+		<div class="result" id="resultBox">
+		  <div><strong>Manifest URL:</strong></div>
+		  <div style="margin-top:8px">
+			<a id="manifestLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+		  </div>
+		  <div style="margin-top:12px">
+			<button class="secondary" id="copyBtn" type="button" style="display:none;">Copia URL</button>
+		  </div>
+		  <div class="hint">Apri questo URL per installare l'addon in Stremio.</div>
+		</div>
     </div>
   </div>
 
@@ -264,14 +269,16 @@
       return `${BASE_URL}/${encodeURIComponent(payload)}/manifest.json`;
     }
 
-    document.getElementById('installBtn').addEventListener('click', () => {
-      const url = buildManifestUrl();
-      const box = document.getElementById('resultBox');
-      const link = document.getElementById('manifestLink');
-      link.href = url;
-      link.textContent = url;
-      box.classList.add('visible');
-    });
+	document.getElementById('installBtn').addEventListener('click', () => {
+	  const url = buildManifestUrl();
+	  const box = document.getElementById('resultBox');
+	  const link = document.getElementById('manifestLink');
+
+	  link.href = url;
+	  link.textContent = url;
+	  box.classList.add('visible');
+	  document.getElementById('copyBtn').style.display = 'inline-block';
+	});
 
     document.getElementById('selectDefaultsBtn').addEventListener('click', () => setChecked(DEFAULT_FEEDS));
     document.getElementById('clearBtn').addEventListener('click', () => setChecked([]));
@@ -311,6 +318,24 @@
 	document.getElementById('clearStreamingBtn').addEventListener('click', () => {
 	  setCheckedInContainer('streamingOptions', false);
 	});
+	
+	//bottone copia url risultante da mettere in Stremio
+const copyBtn = document.getElementById('copyBtn');
+
+if (copyBtn) {
+  copyBtn.addEventListener('click', async () => {
+    const link = document.getElementById('manifestLink').href;
+    try {
+      await navigator.clipboard.writeText(link);
+      copyBtn.textContent = 'Copiato';
+      setTimeout(() => {
+        copyBtn.textContent = 'Copia URL';
+      }, 1500);
+    } catch {
+      alert("Impossibile copiare automaticamente l'URL");
+    }
+  });
+}
 	
   </script>
 </body>
