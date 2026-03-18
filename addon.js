@@ -1,3 +1,12 @@
+// TN (C) 03.2026
+// Addon per la connessione a Davinotti servizi XML per la
+// visualizzazione delle liste in Stremio
+// pagina di configurazione per la scelta dei diversi canali e
+
+// 2026-03-14 - TN - Prima versione senza servizi facendo scraping
+// 2026-03-18 - TN - Collegamento ai servizi XML dedicati
+// 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -5,6 +14,7 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
+const sharp = require('sharp');
 
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
@@ -12,9 +22,12 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
 const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const metaCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+const posterCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+
 const DAVINOTTI_SUFFIX = ' (fonte DAVINOTTI.COM)';
 const FALLBACK_POSTER = 'https://placehold.co/300x450?text=Davinotti';
 
+// Definizione vettore di censimento dei diversi canali selezionabili da cui poi si estrae la lista
 const GENRE_FEEDS = {
   action: { type: 'genre', slug: 'action', code: '336', name: 'Action' },
   'animali-assassini': { type: 'genre', slug: 'animali-assassini', code: '114', name: 'Animali assassini' },
@@ -61,7 +74,7 @@ const GENRE_FEEDS = {
   'apple-tv': { type: 'streaming', slug: 'apple-tv', name: 'Apple TV' }
 };
 
-const DEFAULT_FEEDS = ['commedia', 'drammatico', 'thriller'];
+const DEFAULT_FEEDS = ['commedia', 'fantascienza', 'netflix'];
 
 function safeJsonParse(str, fallback) {
   try {
@@ -126,37 +139,12 @@ function feedDisplayName(feedKey) {
   return GENRE_FEEDS[feedKey]?.name || feedKey;
 }
 
-/* OLD
 function buildManifest(config) {
   const feeds = config.feeds || DEFAULT_FEEDS;
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.5.1',
-    name: 'Davinotti Classifiche',
-    description: 'Cataloghi Davinotti per generi e piattaforme streaming',
-    resources: ['catalog', 'meta'],
-    types: ['movie'],
-    idPrefixes: ['tt', 'dv'],
-    catalogs: feeds.map(feedKey => ({
-      type: 'movie',
-      id: buildCatalogId(feedKey),
-      name: `Davinotti - ${feedDisplayName(feedKey)}`,
-      extra: [{ name: 'skip', isRequired: false }]
-    })),
-    behaviorHints: {
-      configurable: true,
-      configurationRequired: false
-    }
-  };
-} */
-
-function buildManifest(config) {
-  const feeds = config.feeds || DEFAULT_FEEDS;
-
-  return {
-    id: 'community.davinotti.classifiche.xml',
-    version: '2.5.5',
+    version: '2.6.0',
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
     logo: `${BASE_URL || ''}/davinotti-logo.png`,
@@ -177,6 +165,22 @@ function buildManifest(config) {
   };
 }
 
+function getOrigin(reqHost) {
+  return (BASE_URL || reqHost).replace(/\/$/, '');
+}
+
+function formatRating(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? `${num.toFixed(1)}/10` : null;
+}
+
+function escapeXml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 async function fetchTmdbMovieById(tmdbId) {
   if (!TMDB_API_KEY || !tmdbId) return null;
@@ -212,7 +216,7 @@ function extractXmlValue(block, tag) {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const match = block.match(regex);
   if (!match) return '';
-  return cheerio.load(`<root>${match[1]}</root>`, { xmlMode: true }).text().trim();
+  return cheerio.load(`${match[1]}`, { xmlMode: true }).text().trim();
 }
 
 function mapXmlItemToMeta(itemXml, feedKey) {
@@ -224,7 +228,7 @@ function mapXmlItemToMeta(itemXml, feedKey) {
   const dvIdRaw = extractXmlValue(itemXml, 'id');
   const imdbIdRaw = extractXmlValue(itemXml, 'i_id');
   const tmdbIdRaw = extractXmlValue(itemXml, 't_id');
-  const link = extractXmlValue(itemXml, 'l');
+  const link = normalizeLink(extractXmlValue(itemXml, 'l'));
   const votes = extractXmlValue(itemXml, 'v');
   const reviews = extractXmlValue(itemXml, 'vc');
 
@@ -234,14 +238,6 @@ function mapXmlItemToMeta(itemXml, feedKey) {
   const finalId = imdbId || davinottiId;
 
   if (!title || !finalId || !link) {
-    console.log('ITEM SCARTATO DETTAGLIO', {
-      title,
-      dvIdRaw,
-      imdbIdRaw,
-      tmdbIdRaw,
-      finalId,
-      link
-    });
     return null;
   }
 
@@ -266,29 +262,121 @@ function mapXmlItemToMeta(itemXml, feedKey) {
     davinottiId,
     imdbId: imdbId || undefined,
     tmdbId: tmdbId || undefined,
+    davinottiVotes: votes || undefined,
+    davinottiReviews: reviews || undefined,
     feedKey,
     feedName: feed.name
   };
 }
 
+async function downloadBuffer(url) {
+  const response = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: 20000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/2.0; +Render)'
+    }
+  });
+  return Buffer.from(response.data);
+}
 
-async function enrichPreviewWithTmdb(meta) {
-  if (!meta || !meta.tmdbId) return meta;
+function buildPosterSvg(width, height, imdbText, dvText) {
+  const bandHeight = Math.max(44, Math.round(height * 0.10));
+  const padX = Math.max(10, Math.round(width * 0.03));
+  const fontSize = Math.max(18, Math.round(width * 0.045));
+  const labelFontSize = Math.max(12, Math.round(width * 0.027));
+  const imdbBadgeW = Math.max(38, Math.round(width * 0.13));
+  const dvBadgeW = Math.max(30, Math.round(width * 0.09));
+  const badgeH = Math.max(24, Math.round(bandHeight * 0.55));
+  const baselineY = height - Math.round(bandHeight * 0.34);
+  const bottomY = height - bandHeight;
+
+  return Buffer.from(`
+<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bandFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.08)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.78)"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="${bottomY}" width="${width}" height="${bandHeight}" fill="url(#bandFade)"/>
+
+  <rect x="${padX}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${imdbBadgeW}" height="${badgeH}" fill="#f5c518"/>
+  <text x="${padX + Math.round(imdbBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#111111">IMDb</text>
+  <text x="${padX + imdbBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(imdbText || '--')}</text>
+
+  <rect x="${Math.round(width * 0.62)}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${dvBadgeW}" height="${badgeH}" fill="#1f8b4c"/>
+  <text x="${Math.round(width * 0.62) + Math.round(dvBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#ffffff">DV</text>
+  <text x="${Math.round(width * 0.62) + dvBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(dvText || '--')}</text>
+</svg>`);
+}
+
+async function renderPosterWithRatings(meta) {
+  const cacheKey = `poster:${meta.id}:${meta.imdbRating || ''}:${meta.davinottiVotes || ''}:${meta.basePoster || meta.poster || ''}`;
+  const cached = posterCache.get(cacheKey);
+  if (cached) return cached;
+
+  const sourcePoster = meta.basePoster || meta.poster;
+  if (!sourcePoster || sourcePoster.includes('placehold.co')) return null;
+
+  const originalBuffer = await downloadBuffer(sourcePoster);
+  const image = sharp(originalBuffer);
+  const info = await image.metadata();
+
+  const width = info.width || 300;
+  const height = info.height || 450;
+  const imdbText = formatRating(meta.imdbRating);
+  const dvText = formatRating(meta.davinottiVotes);
+
+  if (!imdbText && !dvText) {
+    posterCache.set(cacheKey, originalBuffer);
+    return originalBuffer;
+  }
+
+  const overlay = buildPosterSvg(width, height, imdbText, dvText);
+
+  const output = await image
+    .composite([{ input: overlay, top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+
+  posterCache.set(cacheKey, output);
+  return output;
+}
+
+async function enrichPreviewWithTmdb(meta, reqHost) {
+  const origin = getOrigin(reqHost);
+  if (!meta) return meta;
+
+  if (!meta.tmdbId) {
+    return {
+      ...meta,
+      basePoster: meta.poster,
+      poster: `${origin}/poster/${encodeURIComponent(meta.id)}.png`
+    };
+  }
+
   const tmdbData = await fetchTmdbMovieById(meta.tmdbId);
-  if (!tmdbData) return meta;
+  const basePoster = tmdbData?.poster_path
+    ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`
+    : meta.poster;
 
   return {
     ...meta,
-    poster: tmdbData.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}` : meta.poster,
-    background: tmdbData.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` : meta.background,
+    basePoster,
+    poster: `${origin}/poster/${encodeURIComponent(meta.id)}.png`,
+    background: tmdbData?.backdrop_path
+      ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
+      : meta.background,
     description: meta.description,
-    releaseInfo: meta.releaseInfo || tmdbData.release_date || '',
-    imdbRating: tmdbData.vote_average ? String(tmdbData.vote_average) : undefined
+    releaseInfo: meta.releaseInfo || tmdbData?.release_date || '',
+    imdbRating: tmdbData?.vote_average ? String(tmdbData.vote_average) : meta.imdbRating
   };
 }
 
-async function fetchFeedMetas(feedKey) {
-  const cacheKey = `feed:${feedKey}`;
+async function fetchFeedMetas(feedKey, reqHost) {
+  const cacheKey = `feed:${feedKey}:${getOrigin(reqHost)}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -308,35 +396,23 @@ async function fetchFeedMetas(feedKey) {
     const items = parseXmlItems(xml);
     const metas = [];
     const seen = new Set();
-	
-	
-	console.log('FEED KEY:', feedKey);
-console.log('FEED URL:', url);
-console.log('XML LENGTH:', typeof xml === 'string' ? xml.length : 0);
-console.log('ITEMS PARSED:', items.length);
-
 
     for (const itemXml of items) {
       const baseMeta = mapXmlItemToMeta(itemXml, feedKey);
-	  if (!baseMeta) {
-		  console.log('ITEM SCARTATO');
-		  continue;
-		}
       if (!baseMeta || seen.has(baseMeta.id)) continue;
       seen.add(baseMeta.id);
-      const enriched = await enrichPreviewWithTmdb(baseMeta);
+
+      const enriched = await enrichPreviewWithTmdb(baseMeta, reqHost);
       metas.push(enriched);
+
       metaCache.set(enriched.id, enriched);
       if (enriched.davinottiId) metaCache.set(enriched.davinottiId, enriched);
-	  //console.log('FIRST ITEM TITLE:', items[0] ? extractXmlValue(items[0], 'title') : 'nessuno');
     }
 
     cache.set(cacheKey, metas);
-
-    
-	return metas;
+    return metas;
   } catch (err) {
-    //console.error(`Errore feed XML ${feedKey}:`, err.message);
+    console.error(`Errore feed XML ${feedKey}:`, err.message);
     return [];
   }
 }
@@ -370,19 +446,28 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     }
 
     const tmdbData = baseMeta.tmdbId ? await fetchTmdbMovieById(baseMeta.tmdbId) : null;
-    const poster = tmdbData?.poster_path
-      ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`
-      : (baseMeta.poster || FALLBACK_POSTER);
     const background = tmdbData?.backdrop_path
       ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
       : baseMeta.background;
 
+    const detailParts = [];
+    if (baseMeta.releaseInfo) detailParts.push(`Anno: ${baseMeta.releaseInfo}`);
+    if (baseMeta.genres && baseMeta.genres.length) detailParts.push(`Genere: ${baseMeta.genres.join(', ')}`);
+    if (baseMeta.imdbRating) detailParts.push(`IMDb: ${formatRating(baseMeta.imdbRating)}`);
+    if (baseMeta.davinottiVotes) detailParts.push(`Voto Davinotti: ${formatRating(baseMeta.davinottiVotes)}`);
+    if (baseMeta.davinottiReviews) detailParts.push(`Recensioni: ${baseMeta.davinottiReviews}`);
+
+    const fullDescription = [
+      detailParts.length ? detailParts.join(' • ') : '',
+      description || baseMeta.description || ''
+    ].filter(Boolean).join('\n\n');
+
     const detailed = {
       ...baseMeta,
       name: pageTitle,
-      poster,
+      poster: baseMeta.poster,
       background,
-      description: withDavinottiSource(description || baseMeta.description),
+      description: withDavinottiSource(fullDescription),
       website: davinottiUrl,
       links: [{ name: 'Scheda Davinotti', category: 'read', url: davinottiUrl }]
     };
@@ -405,13 +490,13 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   }
 }
 
-async function findMetaById(id, config) {
+async function findMetaById(id, config, reqHost) {
   const cached = metaCache.get(id);
   if (cached) return cached;
 
   const feeds = config.feeds && config.feeds.length ? config.feeds : DEFAULT_FEEDS;
   for (const feedKey of feeds) {
-    const metas = await fetchFeedMetas(feedKey);
+    const metas = await fetchFeedMetas(feedKey, reqHost);
     const found = metas.find(item => item.id === id || item.davinottiId === id || item.imdbId === id);
     if (found) {
       metaCache.set(id, found);
@@ -422,9 +507,7 @@ async function findMetaById(id, config) {
   return null;
 }
 
-
-
-function buildRouterForConfig(config) {
+function buildRouterForConfig(config, reqHost) {
   const manifest = buildManifest(config);
   const builder = new addonBuilder(manifest);
 
@@ -435,7 +518,7 @@ function buildRouterForConfig(config) {
 
     const feedKey = match[1];
     const skip = parseInt((extra && extra.skip) || 0, 10) || 0;
-    const metas = await fetchFeedMetas(feedKey);
+    const metas = await fetchFeedMetas(feedKey, reqHost);
 
     return {
       metas: metas.slice(skip, skip + 25),
@@ -448,7 +531,7 @@ function buildRouterForConfig(config) {
   builder.defineMetaHandler(async ({ type, id }) => {
     if (type !== 'movie') return { meta: null };
 
-    const baseMeta = await findMetaById(id, config);
+    const baseMeta = await findMetaById(id, config, reqHost);
     if (!baseMeta) {
       return {
         meta: {
@@ -500,7 +583,6 @@ function sendText(res, statusCode, text) {
 }
 
 function renderConfigureHtml(reqHost) {
-	// ritorna i valori alla pagina di configurazione
   const preferred = ['configure.html', 'configure-2.html'];
   const fileName = preferred.find(name => fs.existsSync(path.join(__dirname, name))) || 'configure.html';
   let html = fs.readFileSync(path.join(__dirname, fileName), 'utf8');
@@ -513,14 +595,13 @@ function renderConfigureHtml(reqHost) {
   return html;
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': '*',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
     });
-	
     return res.end();
   }
 
@@ -529,6 +610,33 @@ const server = http.createServer((req, res) => {
   const reqHost = `${protocol}://${host}`;
   const url = new URL(req.url, reqHost);
   const pathname = url.pathname;
+
+  if (pathname.startsWith('/poster/') && pathname.endsWith('.png')) {
+    try {
+      const rawId = pathname.replace('/poster/', '').replace(/\.png$/, '');
+      const metaId = decodeURIComponent(rawId);
+      const meta = metaCache.get(metaId);
+
+      if (!meta) {
+        return sendText(res, 404, 'Poster metadata non trovati');
+      }
+
+      const posterBuffer = await renderPosterWithRatings(meta);
+      if (!posterBuffer) {
+        return sendText(res, 404, 'Poster non disponibile');
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=21600',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      return res.end(posterBuffer);
+    } catch (err) {
+      return sendText(res, 500, `Errore generazione poster: ${err.message}`);
+    }
+  }
 
   if (pathname === '/' || pathname === '/health') {
     return sendJson(res, 200, {
@@ -539,15 +647,14 @@ const server = http.createServer((req, res) => {
     });
   }
 
-	if (pathname === '/davinotti-logo.png') {
-	  const logoPath = path.join(__dirname, 'davinotti-logo.png');
-	  if (fs.existsSync(logoPath)) {
-		res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
-		return fs.createReadStream(logoPath).pipe(res);
-	  }
-	  return sendText(res, 404, 'Logo non trovato');
-	}
-
+  if (pathname === '/davinotti-logo.png') {
+    const logoPath = path.join(__dirname, 'davinotti-logo.png');
+    if (fs.existsSync(logoPath)) {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+      return fs.createReadStream(logoPath).pipe(res);
+    }
+    return sendText(res, 404, 'Logo non trovato');
+  }
 
   if (pathname === '/configure' || pathname === '/configure.html') {
     try {
@@ -558,7 +665,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/manifest.json') {
-    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS });
+    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS }, reqHost);
     return router(req, res, () => sendText(res, 404, 'Not found'));
   }
 
@@ -567,7 +674,7 @@ const server = http.createServer((req, res) => {
     const config = decodeConfigSegment(configManifestMatch[1]);
     const originalUrl = req.url;
     req.url = '/manifest.json';
-    const router = buildRouterForConfig(config);
+    const router = buildRouterForConfig(config, reqHost);
     return router(req, res, () => {
       req.url = originalUrl;
       sendText(res, 404, 'Not found');
@@ -583,7 +690,7 @@ const server = http.createServer((req, res) => {
     const rewritten = `/catalog/movie/${catalogId}.json${query}`;
     const originalUrl = req.url;
     req.url = rewritten;
-    const router = buildRouterForConfig(config);
+    const router = buildRouterForConfig(config, reqHost);
     return router(req, res, () => {
       req.url = originalUrl;
       sendText(res, 404, 'Not found');
@@ -597,7 +704,7 @@ const server = http.createServer((req, res) => {
     const rewritten = `/meta/movie/${metaId}.json`;
     const originalUrl = req.url;
     req.url = rewritten;
-    const router = buildRouterForConfig(config);
+    const router = buildRouterForConfig(config, reqHost);
     return router(req, res, () => {
       req.url = originalUrl;
       sendText(res, 404, 'Not found');
@@ -605,7 +712,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (/^\/catalog\/movie\/([^/]+)\.json$/.test(pathname) || /^\/meta\/movie\/([^/]+)\.json$/.test(pathname)) {
-    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS });
+    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS }, reqHost);
     return router(req, res, () => sendText(res, 404, 'Not found'));
   }
 
@@ -614,9 +721,11 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   const localBase = BASE_URL || `http://localhost:${PORT}`;
-  const sampleConfig = encodeConfig({ feeds: ['commedia', 'netflix', 'thriller'] });
+  const sampleConfig = encodeConfig({ feeds: ['commedia', 'netflix', 'fantascienza'] });
+  const appVersion = buildManifest({ feeds: DEFAULT_FEEDS }).version;
   console.log('==========================================');
   console.log('Davinotti Stremio Addon XML avviato');
+  console.log(`Versione: ${appVersion}`);
   console.log(`Porta: ${PORT}`);
   console.log(`Base URL: ${localBase}`);
   console.log(`Configure: ${localBase}/configure.html`);
