@@ -8,7 +8,7 @@
 // 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
 
 
-const ADDON_VERSION = '3.0.1';
+const ADDON_VERSION = '3.0.3';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -181,10 +181,14 @@ function buildManifest(config, reqHost) {
     }
   };
 }
-
+/*
 function formatRating(value) {
   const num = Number(value);
   return Number.isFinite(num) ? `${num.toFixed(1)}/10` : null;
+}*/
+function formatRating(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toFixed(1) : null;
 }
 
 function escapeXml(value) {
@@ -294,23 +298,23 @@ async function downloadBuffer(url) {
 }
 
 function buildPosterSvg(width, height, imdbText, dvText) {
-  const bandHeight = Math.max(44, Math.round(height * 0.10));
-  const padX = Math.max(10, Math.round(width * 0.03));
-  const fontSize = Math.max(18, Math.round(width * 0.045));
-  const labelFontSize = Math.max(12, Math.round(width * 0.027));
-  const imdbBadgeW = Math.max(38, Math.round(width * 0.13));
-  const dvBadgeW = Math.max(30, Math.round(width * 0.09));
-  const badgeH = Math.max(24, Math.round(bandHeight * 0.55));
-  const baselineY = height - Math.round(bandHeight * 0.34);
+  const bandHeight = Math.max(64, Math.round(height * 0.145));
+  const padX = Math.max(12, Math.round(width * 0.04));
+  const fontSize = Math.max(24, Math.round(width * 0.072));
+  const labelFontSize = Math.max(14, Math.round(width * 0.034));
+  const imdbBadgeW = Math.max(44, Math.round(width * 0.15));
+  const dvBadgeW = Math.max(34, Math.round(width * 0.10));
+  const badgeH = Math.max(28, Math.round(bandHeight * 0.52));
+  const baselineY = height - Math.round(bandHeight * 0.28);
   const bottomY = height - bandHeight;
-  const dvX = Math.round(width * 0.62);
+  const dvX = Math.round(width * 0.60);
 
   return Buffer.from(`
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bandFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(0,0,0,0.08)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.78)"/>
+      <stop offset="0%" stop-color="rgba(0,0,0,0.10)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.82)"/>
     </linearGradient>
   </defs>
 
@@ -318,11 +322,11 @@ function buildPosterSvg(width, height, imdbText, dvText) {
 
   <rect x="${padX}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${imdbBadgeW}" height="${badgeH}" fill="#f5c518"/>
   <text x="${padX + Math.round(imdbBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#111111">IMDb</text>
-  <text x="${padX + imdbBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(imdbText || '--')}</text>
+  <text x="${padX + imdbBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="800" fill="#ffffff" stroke="rgba(0,0,0,0.45)" stroke-width="1.2" paint-order="stroke">${escapeXml(imdbText || '--')}</text>
 
   <rect x="${dvX}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${dvBadgeW}" height="${badgeH}" fill="#1f8b4c"/>
   <text x="${dvX + Math.round(dvBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#ffffff">DV</text>
-  <text x="${dvX + dvBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(dvText || '--')}</text>
+  <text x="${dvX + dvBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="800" fill="#ffffff" stroke="rgba(0,0,0,0.45)" stroke-width="1.2" paint-order="stroke">${escapeXml(dvText || '--')}</text>
 </svg>`);
 }
 
