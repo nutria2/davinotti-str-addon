@@ -156,7 +156,7 @@ function buildManifest(config) {
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.3.0',
+    version: '2.5.5',
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
     logo: `${BASE_URL || ''}/davinotti-logo.png`,
@@ -500,11 +500,16 @@ function sendText(res, statusCode, text) {
 }
 
 function renderConfigureHtml(reqHost) {
+	// ritorna i valori alla pagina di configurazione
   const preferred = ['configure.html', 'configure-2.html'];
   const fileName = preferred.find(name => fs.existsSync(path.join(__dirname, name))) || 'configure.html';
   let html = fs.readFileSync(path.join(__dirname, fileName), 'utf8');
   const origin = BASE_URL || reqHost;
+  const manifestVersion = buildManifest({ feeds: DEFAULT_FEEDS }).version;
+
   html = html.replaceAll('__BASE_URL__', origin.replace(/\/$/, ''));
+  html = html.replaceAll('__ADDON_VERSION__', manifestVersion);
+
   return html;
 }
 

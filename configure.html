@@ -139,13 +139,19 @@
       .grid { grid-template-columns: 1fr; }
       .options { grid-template-columns: 1fr; }
     }
+	.version {
+	  font-size: 0.55em;
+	  font-weight: 600;
+	  opacity: 0.85;
+	  margin-left: 8px;
+	}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
       <img class="logo" src="__BASE_URL__/davinotti-logo.png" alt="Davinotti logo" onerror="this.style.display='none'">
-      <h1>Davinotti Classifiche</h1>
+      <h1>Davinotti Classifiche <span class="version">v__ADDON_VERSION__</span></h1>
       <p class="sub">Seleziona i cataloghi Davinotti da esporre in Stremio.</p>
 
       <div class="grid">
