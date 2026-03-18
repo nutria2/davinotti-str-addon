@@ -126,12 +126,13 @@ function feedDisplayName(feedKey) {
   return GENRE_FEEDS[feedKey]?.name || feedKey;
 }
 
+/* OLD
 function buildManifest(config) {
   const feeds = config.feeds || DEFAULT_FEEDS;
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.3.0',
+    version: '2.5.1',
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
     resources: ['catalog', 'meta'],
@@ -148,7 +149,34 @@ function buildManifest(config) {
       configurationRequired: false
     }
   };
+} */
+
+function buildManifest(config) {
+  const feeds = config.feeds || DEFAULT_FEEDS;
+
+  return {
+    id: 'community.davinotti.classifiche.xml',
+    version: '2.3.0',
+    name: 'Davinotti Classifiche',
+    description: 'Cataloghi Davinotti per generi e piattaforme streaming',
+    logo: `${BASE_URL || ''}/davinotti-logo.png`,
+    background: `${BASE_URL || ''}/davinotti-background.jpg`,
+    resources: ['catalog', 'meta'],
+    types: ['movie'],
+    idPrefixes: ['tt', 'dv'],
+    catalogs: feeds.map(feedKey => ({
+      type: 'movie',
+      id: buildCatalogId(feedKey),
+      name: `Davinotti - ${feedDisplayName(feedKey)}`,
+      extra: [{ name: 'skip', isRequired: false }]
+    })),
+    behaviorHints: {
+      configurable: true,
+      configurationRequired: false
+    }
+  };
 }
+
 
 async function fetchTmdbMovieById(tmdbId) {
   if (!TMDB_API_KEY || !tmdbId) return null;
