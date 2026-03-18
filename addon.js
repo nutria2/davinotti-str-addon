@@ -7,6 +7,8 @@
 // 2026-03-18 - TN - Collegamento ai servizi XML dedicati
 // 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
 
+
+const ADDON_VERSION = '3.0.1';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -159,7 +161,7 @@ function buildManifest(config, reqHost) {
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.8.1b',
+    version: ADDON_VERSION,
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
     logo: getExistingAssetUrl(origin, ['davinotti-logo.png', 'davinotti-logo.jpg', 'davinotti-logo.jpeg']),
