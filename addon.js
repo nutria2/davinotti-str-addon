@@ -139,16 +139,17 @@ function feedDisplayName(feedKey) {
   return GENRE_FEEDS[feedKey]?.name || feedKey;
 }
 
-function buildManifest(config) {
+function buildManifest(config, reqHost) { {
   const feeds = config.feeds || DEFAULT_FEEDS;
+  const origin = getOrigin(reqHost);
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.6.0',
+    version: '2.7.0b',
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
-    logo: `${BASE_URL || ''}/davinotti-logo.png`,
-    background: `${BASE_URL || ''}/davinotti-background.jpg`,
+    logo: `${origin}/davinotti-logo.png`,
+    background: `${origin}/davinotti-background.jpg`,
     resources: ['catalog', 'meta'],
     types: ['movie'],
     idPrefixes: ['tt', 'dv'],
@@ -508,7 +509,7 @@ async function findMetaById(id, config, reqHost) {
 }
 
 function buildRouterForConfig(config, reqHost) {
-  const manifest = buildManifest(config);
+  const manifest = buildManifest(config,reqHost);
   const builder = new addonBuilder(manifest);
 
   builder.defineCatalogHandler(async ({ type, id, extra }) => {
@@ -587,7 +588,7 @@ function renderConfigureHtml(reqHost) {
   const fileName = preferred.find(name => fs.existsSync(path.join(__dirname, name))) || 'configure.html';
   let html = fs.readFileSync(path.join(__dirname, fileName), 'utf8');
   const origin = BASE_URL || reqHost;
-  const manifestVersion = buildManifest({ feeds: DEFAULT_FEEDS }).version;
+  const manifestVersion = buildManifest({ feeds: DEFAULT_FEEDS },reqHost).version;
 
   html = html.replaceAll('__BASE_URL__', origin.replace(/\/$/, ''));
   html = html.replaceAll('__ADDON_VERSION__', manifestVersion);
@@ -722,7 +723,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   const localBase = BASE_URL || `http://localhost:${PORT}`;
   const sampleConfig = encodeConfig({ feeds: ['commedia', 'netflix', 'fantascienza'] });
-  const appVersion = buildManifest({ feeds: DEFAULT_FEEDS }).version;
+  const appVersion = buildManifest({ feeds: DEFAULT_FEEDS }, localBase).version;
   console.log('==========================================');
   console.log('Davinotti Stremio Addon XML avviato');
   console.log(`Versione: ${appVersion}`);
