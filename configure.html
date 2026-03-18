@@ -1,275 +1,317 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurazione Davinotti Addon</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
-            width: 100%;
-            padding: 40px;
-        }
-
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-
-        .section {
-            margin-bottom: 30px;
-        }
-
-        .section-title {
-            color: #444;
-            font-size: 18px;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
-        .genres-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .genre-checkbox {
-            display: none;
-        }
-
-        .genre-label {
-            display: block;
-            padding: 12px 16px;
-            background: #f5f5f5;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-align: center;
-            font-size: 14px;
-            text-transform: capitalize;
-        }
-
-        .genre-checkbox:checked + .genre-label {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .genre-label:hover {
-            border-color: #667eea;
-            transform: translateY(-1px);
-        }
-
-        .button-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        button {
-            flex: 1;
-            padding: 14px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #f5f5f5;
-            color: #333;
-        }
-
-        .btn-secondary:hover {
-            background: #e0e0e0;
-        }
-
-        .install-url {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            word-break: break-all;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            display: none;
-        }
-
-        .install-url.show {
-            display: block;
-        }
-
-        .quick-select {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .quick-select button {
-            flex: none;
-            padding: 8px 16px;
-            font-size: 14px;
-        }
-
-        .info-box {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
-            padding: 12px;
-            border-radius: 4px;
-            margin-top: 20px;
-            font-size: 14px;
-            color: #1565c0;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Davinotti Classifiche - Configurazione</title>
+  <style>
+    :root {
+      --bg: #1d3f0f;
+      --bg-2: #315f17;
+      --panel: rgba(255,255,255,0.1);
+      --panel-border: rgba(255,255,255,0.18);
+      --text: #f4f8ee;
+      --muted: #d3e2c7;
+      --accent: #e56b11;
+      --accent-2: #ff8b2b;
+      --chip: rgba(255,255,255,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg), var(--bg-2));
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 36px;
+    }
+    .hero {
+      background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.24);
+    }
+    .logo {
+      display: block;
+      max-width: 280px;
+      height: auto;
+      margin-bottom: 18px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      padding: 6px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 22px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 18px;
+      backdrop-filter: blur(4px);
+    }
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+    .options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    label.option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--chip);
+      border: 1px solid rgba(255,255,255,0.09);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary {
+      background: linear-gradient(180deg, var(--accent-2), var(--accent));
+      color: white;
+    }
+    .secondary {
+      background: rgba(255,255,255,0.14);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.16);
+    }
+    .result {
+      margin-top: 22px;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 14px;
+      padding: 16px;
+      display: none;
+    }
+    .result.visible { display: block; }
+    .result a {
+      color: #fff7d8;
+      word-break: break-all;
+    }
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .options { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎬 Davinotti Addon</h1>
-        <p class="subtitle">Configura le categorie di film da mostrare in Stremio</p>
+  <div class="wrap">
+    <div class="hero">
+      <img class="logo" src="__BASE_URL__/davinotti-logo.png" alt="Davinotti logo" onerror="this.style.display='none'">
+      <h1>Davinotti Classifiche</h1>
+      <p class="sub">Seleziona i cataloghi Davinotti da esporre in Stremio.</p>
 
-        <div class="section">
-            <div class="section-title">Seleziona i generi</div>
+      <div class="grid">
+		<div class="panel">
+		  <h2>Generi</h2>
+		  <div class="actions" style="margin-top:0;margin-bottom:14px;">
+			<button type="button" class="secondary" id="selectAllGenresBtn">Seleziona tutti i generi</button>
+			<button type="button" class="secondary" id="clearGenresBtn">Deseleziona tutti i generi</button>
+		  </div>
+		  <div class="options" id="genreOptions"></div>
+		</div>
 
-            <div class="quick-select">
-                <button class="btn-secondary" onclick="selectAll()">Seleziona tutti</button>
-                <button class="btn-secondary" onclick="deselectAll()">Deseleziona tutti</button>
-            </div>
+		<div class="panel">
+		  <h2>Piattaforme streaming</h2>
+		  <div class="actions" style="margin-top:0;margin-bottom:14px;">
+			<button type="button" class="secondary" id="selectAllStreamingBtn">Seleziona tutto streaming</button>
+			<button type="button" class="secondary" id="clearStreamingBtn">Deseleziona tutto streaming</button>
+		  </div>
+		  <div class="options" id="streamingOptions"></div>
+		</div>
+      </div>
 
-            <div class="genres-grid" id="genresContainer">
-                <!-- I generi verranno inseriti qui tramite JavaScript -->
-            </div>
-        </div>
+      <div class="actions">
+        <button class="primary" id="installBtn">Genera URL addon</button>
+        <button class="secondary" id="selectDefaultsBtn">Seleziona default</button>
+        <button class="secondary" id="clearBtn">Deseleziona tutto</button>
+      </div>
 
-        <div class="button-group">
-            <button class="btn-primary" onclick="generateInstallUrl()">Genera URL di installazione</button>
-        </div>
-
-        <div class="install-url" id="installUrl"></div>
-
-        <div class="info-box">
-            <strong>Come usare:</strong> Seleziona i generi che vuoi vedere, clicca su "Genera URL", copia l'URL e incollalo in Stremio → Addons → Install from URL.
-        </div>
+      <div class="result" id="resultBox">
+        <div><strong>Manifest URL:</strong></div>
+        <div style="margin-top:8px"><a id="manifestLink" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+        <div class="hint">Apri questo URL per installare l'addon in Stremio.</div>
+      </div>
     </div>
+  </div>
 
-    <script>
-        const genres = [
-            'action', 'animazione', 'avventura', 'biografico', 'commedia',
-            'documentario', 'drammatico', 'fantascienza', 'fantastico',
-            'giallo', 'guerra', 'horror', 'thriller', 'western'
-        ];
+  <script>
+    const BASE_URL = '__BASE_URL__';
+    const DEFAULT_FEEDS = ['commedia', 'drammatico', 'thriller'];
 
-        // Generi predefiniti
-        const defaultGenres = ['commedia', 'drammatico', 'thriller'];
+    const GENRES = [
+      ['action', 'Action'],
+      ['animali-assassini', 'Animali assassini'],
+      ['antologia', 'Antologia'],
+      ['arti-marziali', 'Arti marziali'],
+      ['avventura', 'Avventura'],
+      ['biografico', 'Biografico'],
+      ['comico', 'Comico'],
+      ['commedia', 'Commedia'],
+      ['corto-mediometraggio', 'Corto-mediometraggio'],
+      ['documentario', 'Documentario'],
+      ['drammatico', 'Drammatico'],
+      ['erotico', 'Erotico'],
+      ['fantascienza', 'Fantascienza'],
+      ['fantastico', 'Fantastico'],
+      ['fiction', 'Fiction'],
+      ['gangster', 'Gangster'],
+      ['giallo', 'Giallo'],
+      ['guerra', 'Guerra'],
+      ['horror', 'Horror'],
+      ['musicale', 'Musicale'],
+      ['peplum', 'Peplum'],
+      ['poliziesco', 'Poliziesco'],
+      ['sentimentale', 'Sentimentale'],
+      ['spaghetti-western', 'Spaghetti western'],
+      ['spionaggio', 'Spionaggio'],
+      ['teatro', 'Teatro'],
+      ['thriller', 'Thriller'],
+      ['western', 'Western']
+    ];
 
-        // Popolate la griglia dei generi
-        function initGenres() {
-            const container = document.getElementById('genresContainer');
-            genres.forEach(genre => {
-                const div = document.createElement('div');
-                const checked = defaultGenres.includes(genre) ? 'checked' : '';
-                div.innerHTML = `
-                    <input type="checkbox" class="genre-checkbox" id="genre_${genre}" value="${genre}" ${checked}>
-                    <label class="genre-label" for="genre_${genre}">${genre}</label>
-                `;
-                container.appendChild(div);
-            });
-        }
+    const STREAMING = [
+      ['netflix', 'Netflix'],
+      ['amazon-prime-video', 'Amazon Prime Video'],
+      ['now-tv', 'NOW TV'],
+      ['rai-play', 'RaiPlay'],
+      ['mubi', 'MUBI'],
+      ['disney-plus', 'Disney+'],
+      ['timvision', 'TIMvision'],
+      ['mediaset-infinity', 'Mediaset Infinity'],
+      ['chili', 'Chili'],
+      ['apple-tv-plus', 'Apple TV+'],
+      ['google-play-movies', 'Google Play Movies'],
+      ['rakuten-tv', 'Rakuten TV'],
+      ['amazon-video', 'Amazon Video'],
+      ['paramount-plus', 'Paramount+'],
+      ['apple-tv', 'Apple TV']
+    ];
 
-        function selectAll() {
-            document.querySelectorAll('.genre-checkbox').forEach(cb => cb.checked = true);
-        }
+    function createOptions(containerId, items) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      items.forEach(([value, label]) => {
+        const el = document.createElement('label');
+        el.className = 'option';
+        el.innerHTML = `<input type="checkbox" value="${value}"><span>${label}</span>`;
+        container.appendChild(el);
+      });
+    }
 
-        function deselectAll() {
-            document.querySelectorAll('.genre-checkbox').forEach(cb => cb.checked = false);
-        }
+    function getSelectedFeeds() {
+      return Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
+    }
 
-        function generateInstallUrl() {
-            const selectedGenres = Array.from(document.querySelectorAll('.genre-checkbox:checked'))
-                .map(cb => cb.value);
+    function setChecked(values) {
+      const set = new Set(values);
+      document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = set.has(cb.value);
+      });
+    }
 
-            if (selectedGenres.length === 0) {
-                alert('Seleziona almeno un genere!');
-                return;
-            }
+    function buildManifestUrl() {
+      const feeds = getSelectedFeeds();
+      const finalFeeds = feeds.length ? feeds : DEFAULT_FEEDS;
+      const payload = btoa(JSON.stringify({ feeds: finalFeeds }));
+      return `${BASE_URL}/${encodeURIComponent(payload)}/manifest.json`;
+    }
 
-            const config = {
-                genres: selectedGenres
-            };
+    document.getElementById('installBtn').addEventListener('click', () => {
+      const url = buildManifestUrl();
+      const box = document.getElementById('resultBox');
+      const link = document.getElementById('manifestLink');
+      link.href = url;
+      link.textContent = url;
+      box.classList.add('visible');
+    });
 
-            const configEncoded = btoa(JSON.stringify(config));
-//            const baseUrl = window.location.origin;
-            const injectedBase = "__BASE_URL__";
-            const baseUrl = injectedBase !== "__BASE_URL__" ? injectedBase : window.location.origin;
-            
-            const installUrl = `${baseUrl}/${configEncoded}/manifest.json`;
+    document.getElementById('selectDefaultsBtn').addEventListener('click', () => setChecked(DEFAULT_FEEDS));
+    document.getElementById('clearBtn').addEventListener('click', () => setChecked([]));
 
-            const urlDiv = document.getElementById('installUrl');
-            urlDiv.innerHTML = `
-                <strong>URL di installazione:</strong><br>
-                <a href="${installUrl}" target="_blank">${installUrl}</a><br><br>
-                <button class="btn-primary" onclick="copyToClipboard('${installUrl}')">📋 Copia URL</button>
-                <button class="btn-secondary" onclick="openInStremio('${installUrl}')">🚀 Apri in Stremio</button>
-            `;
-            urlDiv.classList.add('show');
-        }
+    createOptions('genreOptions', GENRES);
+    createOptions('streamingOptions', STREAMING);
+    setChecked(DEFAULT_FEEDS);
+	
+	
+	//Gestione bottoni seleziona/deseleziona tutto
+	function setCheckedByValues(values) {
+	  const set = new Set(values);
+	  document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+		cb.checked = set.has(cb.value);
+	  });
+	}
 
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                alert('URL copiato negli appunti!');
-            }).catch(err => {
-                console.error('Errore nella copia:', err);
-            });
-        }
+	function setCheckedInContainer(containerId, checked) {
+	  const container = document.getElementById(containerId);
+	  container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+		cb.checked = checked;
+	  });
+	}
+	
+	document.getElementById('selectAllGenresBtn').addEventListener('click', () => {
+	  setCheckedInContainer('genreOptions', true);
+	});
 
-        function openInStremio(url) {
-            window.location.href = `stremio://${url}`;
-        }
+	document.getElementById('clearGenresBtn').addEventListener('click', () => {
+	  setCheckedInContainer('genreOptions', false);
+	});
 
-        // Inizializza i generi al caricamento
-        initGenres();
-    </script>
+	document.getElementById('selectAllStreamingBtn').addEventListener('click', () => {
+	  setCheckedInContainer('streamingOptions', true);
+	});
+
+	document.getElementById('clearStreamingBtn').addEventListener('click', () => {
+	  setCheckedInContainer('streamingOptions', false);
+	});
+	
+  </script>
 </body>
 </html>

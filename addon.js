@@ -13,26 +13,55 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const metaCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const DAVINOTTI_SUFFIX = ' (fonte DAVINOTTI.COM)';
+const FALLBACK_POSTER = 'https://placehold.co/300x450?text=Davinotti';
 
-const GENRE_IDS = {
-  action: '336',
-  animazione: '122',
-  avventura: '144',
-  biografico: '208',
-  commedia: '107',
-  documentario: '227',
-  drammatico: '104',
-  fantascienza: '100',
-  fantastico: '117',
-  giallo: '108',
-  guerra: '121',
-  horror: '112',
-  thriller: '111',
-  western: '123'
+const GENRE_FEEDS = {
+  action: { type: 'genre', slug: 'action', code: '336', name: 'Action' },
+  'animali-assassini': { type: 'genre', slug: 'animali-assassini', code: '114', name: 'Animali assassini' },
+  antologia: { type: 'genre', slug: 'antologia', code: '181', name: 'Antologia' },
+  'arti-marziali': { type: 'genre', slug: 'arti-marziali', code: '506', name: 'Arti marziali' },
+  avventura: { type: 'genre', slug: 'avventura', code: '144', name: 'Avventura' },
+  biografico: { type: 'genre', slug: 'biografico', code: '208', name: 'Biografico' },
+  comico: { type: 'genre', slug: 'comico', code: '109', name: 'Comico' },
+  commedia: { type: 'genre', slug: 'commedia', code: '107', name: 'Commedia' },
+  'corto-mediometraggio': { type: 'genre', slug: 'corto-mediometraggio', code: '127', name: 'Corto-mediometraggio' },
+  documentario: { type: 'genre', slug: 'documentario', code: '227', name: 'Documentario' },
+  drammatico: { type: 'genre', slug: 'drammatico', code: '104', name: 'Drammatico' },
+  erotico: { type: 'genre', slug: 'erotico', code: '191', name: 'Erotico' },
+  fantascienza: { type: 'genre', slug: 'fantascienza', code: '100', name: 'Fantascienza' },
+  fantastico: { type: 'genre', slug: 'fantastico', code: '117', name: 'Fantastico' },
+  fiction: { type: 'genre', slug: 'fiction', code: '362', name: 'Fiction' },
+  gangster: { type: 'genre', slug: 'gangster-noir', code: '124', name: 'Gangster' },
+  giallo: { type: 'genre', slug: 'giallo', code: '108', name: 'Giallo' },
+  guerra: { type: 'genre', slug: 'guerra', code: '121', name: 'Guerra' },
+  horror: { type: 'genre', slug: 'horror', code: '112', name: 'Horror' },
+  musicale: { type: 'genre', slug: 'musicale', code: '142', name: 'Musicale' },
+  peplum: { type: 'genre', slug: 'peplum', code: '136', name: 'Peplum' },
+  poliziesco: { type: 'genre', slug: 'poliziesco', code: '163', name: 'Poliziesco' },
+  sentimentale: { type: 'genre', slug: 'sentimentale', code: '287', name: 'Sentimentale' },
+  'spaghetti-western': { type: 'genre', slug: 'spaghetti-western', code: '165', name: 'Spaghetti western' },
+  spionaggio: { type: 'genre', slug: 'spionaggio', code: '115', name: 'Spionaggio' },
+  teatro: { type: 'genre', slug: 'teatro', code: '275', name: 'Teatro' },
+  thriller: { type: 'genre', slug: 'thriller', code: '111', name: 'Thriller' },
+  western: { type: 'genre', slug: 'western', code: '123', name: 'Western' },
+  netflix: { type: 'streaming', slug: 'netflix', name: 'Netflix' },
+  'amazon-prime-video': { type: 'streaming', slug: 'amazon-prime-video', name: 'Amazon Prime Video' },
+  'now-tv': { type: 'streaming', slug: 'now-tv', name: 'NOW TV' },
+  'rai-play': { type: 'streaming', slug: 'rai-play', name: 'RaiPlay' },
+  mubi: { type: 'streaming', slug: 'mubi', name: 'MUBI' },
+  'disney-plus': { type: 'streaming', slug: 'disney-plus', name: 'Disney+' },
+  timvision: { type: 'streaming', slug: 'timvision', name: 'TIMvision' },
+  'mediaset-infinity': { type: 'streaming', slug: 'mediaset-infinity', name: 'Mediaset Infinity' },
+  chili: { type: 'streaming', slug: 'chili', name: 'Chili' },
+  'apple-tv-plus': { type: 'streaming', slug: 'apple-tv-plus', name: 'Apple TV+' },
+  'google-play-movies': { type: 'streaming', slug: 'google-play-movies', name: 'Google Play Movies' },
+  'rakuten-tv': { type: 'streaming', slug: 'rakuten-tv', name: 'Rakuten TV' },
+  'amazon-video': { type: 'streaming', slug: 'amazon-video', name: 'Amazon Video' },
+  'paramount-plus': { type: 'streaming', slug: 'paramount-plus', name: 'Paramount+' },
+  'apple-tv': { type: 'streaming', slug: 'apple-tv', name: 'Apple TV' }
 };
 
-const DEFAULT_GENRES = ['commedia', 'drammatico', 'thriller'];
-const FALLBACK_POSTER = 'https://placehold.co/300x450?text=Davinotti';
+const DEFAULT_FEEDS = ['commedia', 'drammatico', 'thriller'];
 
 function safeJsonParse(str, fallback) {
   try {
@@ -43,35 +72,28 @@ function safeJsonParse(str, fallback) {
 }
 
 function decodeConfigSegment(segment) {
-  if (!segment) return { genres: DEFAULT_GENRES };
+  if (!segment) return { feeds: DEFAULT_FEEDS };
 
   try {
     const normalized = decodeURIComponent(segment);
     const json = Buffer.from(normalized, 'base64').toString('utf8');
-    const parsed = safeJsonParse(json, { genres: DEFAULT_GENRES });
+    const parsed = safeJsonParse(json, { feeds: DEFAULT_FEEDS });
+    const requested = Array.isArray(parsed.feeds)
+      ? parsed.feeds
+      : (Array.isArray(parsed.genres) ? parsed.genres : DEFAULT_FEEDS);
 
-    if (!parsed || !Array.isArray(parsed.genres) || parsed.genres.length === 0) {
-      return { genres: DEFAULT_GENRES };
-    }
+    const validFeeds = requested
+      .map(v => String(v).trim().toLowerCase())
+      .filter(v => GENRE_FEEDS[v]);
 
-    const validGenres = parsed.genres
-      .map(g => String(g).trim().toLowerCase())
-      .filter(g => GENRE_IDS[g]);
-
-    return {
-      genres: validGenres.length ? validGenres : DEFAULT_GENRES
-    };
+    return { feeds: validFeeds.length ? validFeeds : DEFAULT_FEEDS };
   } catch {
-    return { genres: DEFAULT_GENRES };
+    return { feeds: DEFAULT_FEEDS };
   }
 }
 
 function encodeConfig(config) {
   return Buffer.from(JSON.stringify(config), 'utf8').toString('base64');
-}
-
-function titleCase(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function normalizeLink(link) {
@@ -80,27 +102,45 @@ function normalizeLink(link) {
   return `https://www.davinotti.com${link}`;
 }
 
-function extractYear(text) {
-  if (!text) return '';
-  const match = String(text).match(/\b(18|19|20)\d{2}\b/);
-  return match ? match[0] : '';
+function withDavinottiSource(text) {
+  const clean = (text || '').trim();
+  if (!clean) return `Sinossi non disponibile${DAVINOTTI_SUFFIX}`;
+  if (clean.includes(DAVINOTTI_SUFFIX)) return clean;
+  return `${clean}${DAVINOTTI_SUFFIX}`;
+}
+
+function buildFeedUrl(feedKey) {
+  const feed = GENRE_FEEDS[feedKey];
+  if (!feed) return '';
+  if (feed.type === 'streaming') {
+    return `https://www.davinotti.com/xml/streaming/${feed.slug}`;
+  }
+  return `https://www.davinotti.com/xml/film-per-genere/${feed.slug}/${feed.code}`;
+}
+
+function buildCatalogId(feedKey) {
+  return `davinotti_${feedKey}`;
+}
+
+function feedDisplayName(feedKey) {
+  return GENRE_FEEDS[feedKey]?.name || feedKey;
 }
 
 function buildManifest(config) {
-  const genres = config.genres || DEFAULT_GENRES;
+  const feeds = config.feeds || DEFAULT_FEEDS;
 
   return {
-    id: 'community.davinotti.classifiche',
-    version: '1.2.2',
+    id: 'community.davinotti.classifiche.xml',
+    version: '2.3.0',
     name: 'Davinotti Classifiche',
-    description: 'Classifiche e migliori film per categoria da davinotti.com',
+    description: 'Cataloghi Davinotti da feed XML per generi e piattaforme streaming',
     resources: ['catalog', 'meta'],
     types: ['movie'],
     idPrefixes: ['tt', 'dv'],
-    catalogs: genres.map(genre => ({
+    catalogs: feeds.map(feedKey => ({
       type: 'movie',
-      id: `davinotti_${genre}`,
-      name: `Davinotti - ${titleCase(genre)}`,
+      id: buildCatalogId(feedKey),
+      name: `Davinotti - ${feedDisplayName(feedKey)}`,
       extra: [{ name: 'skip', isRequired: false }]
     })),
     behaviorHints: {
@@ -110,96 +150,17 @@ function buildManifest(config) {
   };
 }
 
-async function getTmdbExternalIds(tmdbId) {
-  if (!TMDB_API_KEY || !tmdbId) return null;
-
-  try {
-    const response = await axios.get(
-      `https://api.themoviedb.org/3/movie/${tmdbId}/external_ids`,
-      {
-        timeout: 15000,
-        params: {
-          api_key: TMDB_API_KEY
-        }
-      }
-    );
-
-    return response.data || null;
-  } catch (err) {
-    console.error(`Errore TMDB external_ids per ${tmdbId}:`, err.message);
-    return null;
-  }
-}
-
-async function getTmdbPoster(title, year) {
-  if (!TMDB_API_KEY || !title) return null;
-
-  try {
-    const searchResponse = await axios.get('https://api.themoviedb.org/3/search/movie', {
-      timeout: 15000,
-      params: {
-        api_key: TMDB_API_KEY,
-        language: 'it-IT',
-        query: title,
-        year: year || undefined
-      }
-    });
-
-    const results = searchResponse.data && searchResponse.data.results
-      ? searchResponse.data.results
-      : [];
-
-    const first = results[0];
-    if (!first || !first.id) return null;
-
-    const detailResponse = await axios.get(`https://api.themoviedb.org/3/movie/${first.id}`, {
-      timeout: 15000,
-      params: {
-        api_key: TMDB_API_KEY,
-        language: 'it-IT',
-        append_to_response: 'external_ids'
-      }
-    });
-
-    const movie = detailResponse.data || {};
-    const imdbId =
-      movie.external_ids && movie.external_ids.imdb_id
-        ? movie.external_ids.imdb_id
-        : null;
-
-    return {
-      tmdbId: movie.id || first.id,
-      imdbId: imdbId && imdbId.startsWith('tt') ? imdbId : null,
-      poster: movie.poster_path
-        ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-        : null,
-      background: movie.backdrop_path
-        ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
-        : undefined,
-      overview: movie.overview || first.overview || '',
-      releaseDate: movie.release_date || first.release_date || ''
-    };
-  } catch (err) {
-    console.error(`Errore TMDB search/detail per "${title}":`, err.message);
-    return null;
-  }
-}
-
-
-
 async function fetchTmdbMovieById(tmdbId) {
   if (!TMDB_API_KEY || !tmdbId) return null;
 
   try {
-    const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
-    const response = await axios.get(url, {
+    const response = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}`, {
       timeout: 15000,
       params: {
         api_key: TMDB_API_KEY,
         language: 'it-IT'
       }
     });
-
     return response.data || null;
   } catch (err) {
     console.error(`Errore TMDB movie/${tmdbId}:`, err.message);
@@ -207,61 +168,122 @@ async function fetchTmdbMovieById(tmdbId) {
   }
 }
 
-function withDavinottiSource(text) {
-  const clean = (text || '').trim();
-  if (!clean) return 'Sinossi non disponibile (fonte DAVINOTTI.COM)';
-  if (clean.includes('(fonte DAVINOTTI.COM)')) return clean;
-  return `${clean} (fonte DAVINOTTI.COM)`;
+function parseXmlItems(xml) {
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  const items = [];
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    items.push(match[1]);
+  }
+  return items;
 }
 
-async function enrichWithTmdb(baseMeta, tmdbId, title, year) {
-  let tmdbData = null;
+function extractXmlValue(block, tag) {
+  const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  const match = block.match(regex);
+  if (!match) return '';
+  return cheerio.load(`<root>${match[1]}</root>`, { xmlMode: true }).text().trim();
+}
 
-  if (tmdbId) {
-    tmdbData = await fetchTmdbMovieById(tmdbId);
-  }
+function mapXmlItemToMeta(itemXml, feedKey) {
+  const feed = GENRE_FEEDS[feedKey];
+  const title = extractXmlValue(itemXml, 'title');
+  const year = extractXmlValue(itemXml, 'anno');
+  const category = extractXmlValue(itemXml, 'genere');
+  const dvIdRaw = extractXmlValue(itemXml, 'id');
+  const imdbIdRaw = extractXmlValue(itemXml, 't_id');
+  const tmdbIdRaw = extractXmlValue(itemXml, 'i_id');
+  const link = extractXmlValue(itemXml, 'link');
+  const votes = extractXmlValue(itemXml, 'voto');
+  const reviews = extractXmlValue(itemXml, 'recensioni');
 
-  if (!tmdbData) {
-    const searchData = await getTmdbPoster(title, year);
-    if (searchData) {
-      return {
-        ...baseMeta,
-        id: searchData.imdbId || baseMeta.id,
-        poster: searchData.poster || baseMeta.poster || FALLBACK_POSTER,
-        background: searchData.background || baseMeta.background,
-        description: withDavinottiSource(baseMeta.description || searchData.overview ),
-        releaseInfo: searchData.releaseDate || baseMeta.releaseInfo || '',
-        imdbId: searchData.imdbId || baseMeta.imdbId,
-        tmdbId: searchData.tmdbId || baseMeta.tmdbId
-      };
-    }
+  const imdbId = imdbIdRaw && imdbIdRaw.startsWith('tt') ? imdbIdRaw : '';
+  const tmdbId = tmdbIdRaw && /^\d+$/.test(tmdbIdRaw) ? tmdbIdRaw : '';
+  const davinottiId = dvIdRaw ? `dv${dvIdRaw}` : '';
+  const finalId = imdbId || davinottiId;
 
-    return baseMeta;
-  }
+  if (!title || !finalId || !link) return null;
 
-  const poster = tmdbData.poster_path
-    ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`
-    : (baseMeta.poster || FALLBACK_POSTER);
-
-  const background = tmdbData.backdrop_path
-    ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
-    : baseMeta.background;
+  const fallbackDescription = `Film dalla classifica ${feedDisplayName(feedKey)} su davinotti.com`;
+  const descriptionParts = [];
+  if (category) descriptionParts.push(`Genere: ${category}`);
+  if (year) descriptionParts.push(`Anno: ${year}`);
+  if (votes) descriptionParts.push(`Voto Davinotti: ${votes}`);
+  if (reviews) descriptionParts.push(`Recensioni: ${reviews}`);
 
   return {
-    ...baseMeta,
-    poster,
-    background,
-    description: withDavinottiSource(baseMeta.description || tmdbData.overview ),
-    releaseInfo: tmdbData.release_date || baseMeta.releaseInfo || '',
-    imdbRating: tmdbData.vote_average ? String(tmdbData.vote_average) : undefined,
-    genres: Array.isArray(tmdbData.genres) && tmdbData.genres.length
-      ? tmdbData.genres.map(g => g.name)
-      : baseMeta.genres,
-    tmdbId: tmdbId || baseMeta.tmdbId,
-    imdbId: baseMeta.imdbId
+    id: finalId,
+    type: 'movie',
+    name: title,
+    poster: FALLBACK_POSTER,
+    posterShape: 'poster',
+    description: descriptionParts.length ? descriptionParts.join(' • ') : fallbackDescription,
+    genres: [category || feed.name],
+    releaseInfo: year || '',
+    links: [{ name: 'Scheda Davinotti', category: 'read', url: link }],
+    website: link,
+    davinottiId,
+    imdbId: imdbId || undefined,
+    tmdbId: tmdbId || undefined,
+    feedKey,
+    feedName: feed.name
   };
 }
 
+async function enrichPreviewWithTmdb(meta) {
+  if (!meta || !meta.tmdbId) return meta;
+  const tmdbData = await fetchTmdbMovieById(meta.tmdbId);
+  if (!tmdbData) return meta;
+
+  return {
+    ...meta,
+    poster: tmdbData.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}` : meta.poster,
+    background: tmdbData.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` : meta.background,
+    description: meta.description,
+    releaseInfo: meta.releaseInfo || tmdbData.release_date || '',
+    imdbRating: tmdbData.vote_average ? String(tmdbData.vote_average) : undefined
+  };
+}
+
+async function fetchFeedMetas(feedKey) {
+  const cacheKey = `feed:${feedKey}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const url = buildFeedUrl(feedKey);
+  if (!url) return [];
+
+  try {
+    const response = await axios.get(url, {
+      timeout: 20000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/2.0; +Render)',
+        'Accept': 'application/xml,text/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+
+    const xml = response.data;
+    const items = parseXmlItems(xml);
+    const metas = [];
+    const seen = new Set();
+
+    for (const itemXml of items) {
+      const baseMeta = mapXmlItemToMeta(itemXml, feedKey);
+      if (!baseMeta || seen.has(baseMeta.id)) continue;
+      seen.add(baseMeta.id);
+      const enriched = await enrichPreviewWithTmdb(baseMeta);
+      metas.push(enriched);
+      metaCache.set(enriched.id, enriched);
+      if (enriched.davinottiId) metaCache.set(enriched.davinottiId, enriched);
+    }
+
+    cache.set(cacheKey, metas);
+    return metas;
+  } catch (err) {
+    console.error(`Errore feed XML ${feedKey}:`, err.message);
+    return [];
+  }
+}
 
 async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   const cacheKey = `detail:${baseMeta.id}`;
@@ -272,173 +294,58 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     const response = await axios.get(davinottiUrl, {
       timeout: 15000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/1.2; +Render)'
+        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/2.0; +Render)'
       }
     });
 
     const $ = cheerio.load(response.data);
-
     const pageTitle = $('h1').first().text().trim() || baseMeta.name;
-    const textBody = $('body').text().replace(/\s+/g, ' ');
-    const year = extractYear(textBody) || baseMeta.releaseInfo || '';
 
-let description =
-  $('meta[name="description"]').attr('content') ||
-  $('meta[property="og:description"]').attr('content') ||
-  $('.field-name-body').text().trim() ||
-  $('.node-film .content').text().trim() ||
-  $('.content').first().text().trim() ||
-  baseMeta.description;
+    let description =
+      $('meta[name="description"]').attr('content') ||
+      $('meta[property="og:description"]').attr('content') ||
+      $('.field-name-body').text().trim() ||
+      $('.node-film .content').text().trim() ||
+      $('.content').first().text().trim() ||
+      baseMeta.description;
 
-if (description) {
-  description = description.replace(/\s+/g, ' ').trim().slice(0, 1200);
-}
+    if (description) {
+      description = description.replace(/\s+/g, ' ').trim().slice(0, 1400);
+    }
 
-    let tmdbId = baseMeta.tmdbId || null;
-    $('a[href*="themoviedb.org/movie/"]').each((_, el) => {
-      const href = $(el).attr('href') || '';
-      const match = href.match(/themoviedb\.org\/movie\/(\d+)/);
-      if (match && match[1]) {
-        tmdbId = match[1];
-        return false;
-      }
-    });
+    const tmdbData = baseMeta.tmdbId ? await fetchTmdbMovieById(baseMeta.tmdbId) : null;
+    const poster = tmdbData?.poster_path
+      ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`
+      : (baseMeta.poster || FALLBACK_POSTER);
+    const background = tmdbData?.backdrop_path
+      ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
+      : baseMeta.background;
 
-    let posterFromPage = '';
-    $('img').each((_, el) => {
-      const src = $(el).attr('src') || '';
-      if (!posterFromPage && src && !src.includes('logo') && !src.includes('icon')) {
-        posterFromPage = normalizeLink(src);
-      }
-    });
-
-    const baseDetailed = {
+    const detailed = {
       ...baseMeta,
       name: pageTitle,
-      poster: baseMeta.poster || posterFromPage || FALLBACK_POSTER,
-      background: baseMeta.background || posterFromPage || undefined,
-      description: withDavinottiSource(baseMeta.description || description ),
-      releaseInfo: year || baseMeta.releaseInfo || '',
+      poster,
+      background,
+      description: withDavinottiSource(description || baseMeta.description),
       website: davinottiUrl,
-      links: [
-        {
-          name: 'Scheda Davinotti',
-          category: 'read',
-          url: davinottiUrl
-        }
-      ]
+      links: [{ name: 'Scheda Davinotti', category: 'read', url: davinottiUrl }]
     };
 
-    const enriched = await enrichWithTmdb(baseDetailed, tmdbId, pageTitle, year);
-    metaCache.set(cacheKey, enriched);
-    metaCache.set(enriched.id, enriched);
-    if (baseMeta.id !== enriched.id) {
-      metaCache.set(baseMeta.id, enriched);
-    }
-    return enriched;
+    metaCache.set(cacheKey, detailed);
+    metaCache.set(detailed.id, detailed);
+    if (detailed.davinottiId) metaCache.set(detailed.davinottiId, detailed);
+    return detailed;
   } catch (err) {
     console.error(`Errore dettaglio ${davinottiUrl}:`, err.message);
     const fallback = {
       ...baseMeta,
-      poster: baseMeta.poster || FALLBACK_POSTER,
+      description: withDavinottiSource(baseMeta.description),
       website: davinottiUrl
     };
     metaCache.set(cacheKey, fallback);
     metaCache.set(baseMeta.id, fallback);
+    if (baseMeta.davinottiId) metaCache.set(baseMeta.davinottiId, fallback);
     return fallback;
-  }
-}
-
-async function scrapeGenreMovies(genre, skip = 0) {
-  const cacheKey = `genre:${genre}:${skip}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-
-  const genreId = GENRE_IDS[genre];
-  if (!genreId) return [];
-
-  const url = `https://www.davinotti.com/film-per-genere/${genre}/${genreId}`;
-
-  try {
-    const response = await axios.get(url, {
-      timeout: 15000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/1.2; +Render)'
-      }
-    });
-
-    const $ = cheerio.load(response.data);
-    const metas = [];
-    const seen = new Set();
-    const elements = $('a[href*="/film/"]').toArray();
-
-    for (let index = 0; index < elements.length; index++) {
-      if (metas.length >= 100) break;
-
-      const el = elements[index];
-      const href = $(el).attr('href');
-      const rawName = $(el).text().trim().replace(/\s+/g, ' ');
-      const name = rawName.replace(/\s+\(\d{4}\)\s*$/, '').trim();
-
-      if (!href || !name || name.length < 2) continue;
-
-      const match = href.match(/\/film\/[^/]+\/(\d+)/);
-      const numericId = match ? match[1] : null;
-      const davinottiId = numericId ? `dv${numericId}` : `dv_${genre}_${index}`;
-      const davinottiUrl = normalizeLink(href);
-      const year = extractYear(rawName);
-
-      const tmdb = await getTmdbPoster(name, year);
-	  
-	  console.log('DEBUG TMDB', {
-		  title: name,
-		  year,
-		  tmdbId: tmdb ? tmdb.tmdbId : null,
-		  imdbId: tmdb ? tmdb.imdbId : null
-		});
-	  
-      const finalId = (tmdb && tmdb.imdbId) ? tmdb.imdbId : davinottiId;
-
-      if (seen.has(finalId)) continue;
-      seen.add(finalId);
-
-      const metaPreview = {
-        id: finalId,
-        type: 'movie',
-        name,
-        poster: tmdb && tmdb.poster ? tmdb.poster : FALLBACK_POSTER,
-        posterShape: 'poster',
-        background: tmdb && tmdb.background ? tmdb.background : undefined,
-        description: tmdb && tmdb.overview
-          ? tmdb.overview
-          : `Film della categoria ${genre} da davinotti.com`,
-        genres: [titleCase(genre)],
-        releaseInfo: year || (tmdb && tmdb.releaseDate ? tmdb.releaseDate : ''),
-        links: [
-          {
-            name: 'Scheda Davinotti',
-            category: 'read',
-            url: davinottiUrl
-          }
-        ],
-        website: davinottiUrl,
-        tmdbId: tmdb && tmdb.tmdbId ? tmdb.tmdbId : undefined,
-        imdbId: tmdb && tmdb.imdbId ? tmdb.imdbId : undefined,
-        davinottiId
-      };
-
-      metas.push(metaPreview);
-
-      metaCache.set(finalId, metaPreview);
-      metaCache.set(davinottiId, metaPreview);
-    }
-
-    const sliced = metas.slice(skip, skip + 25);
-    cache.set(cacheKey, sliced);
-    return sliced;
-  } catch (err) {
-    console.error(`Errore scraping genere ${genre}:`, err.message);
-    return [];
   }
 }
 
@@ -446,12 +353,9 @@ async function findMetaById(id, config) {
   const cached = metaCache.get(id);
   if (cached) return cached;
 
-  const genres = (config && config.genres && config.genres.length)
-    ? config.genres
-    : DEFAULT_GENRES;
-
-  for (const genre of genres) {
-    const metas = await scrapeGenreMovies(genre, 0);
+  const feeds = config.feeds && config.feeds.length ? config.feeds : DEFAULT_FEEDS;
+  for (const feedKey of feeds) {
+    const metas = await fetchFeedMetas(feedKey);
     const found = metas.find(item => item.id === id || item.davinottiId === id || item.imdbId === id);
     if (found) {
       metaCache.set(id, found);
@@ -462,22 +366,23 @@ async function findMetaById(id, config) {
   return null;
 }
 
+
+
 function buildRouterForConfig(config) {
   const manifest = buildManifest(config);
   const builder = new addonBuilder(manifest);
 
   builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type !== 'movie') return { metas: [] };
-
     const match = id.match(/^davinotti_(.+)$/);
     if (!match) return { metas: [] };
 
-    const genre = match[1];
+    const feedKey = match[1];
     const skip = parseInt((extra && extra.skip) || 0, 10) || 0;
-    const metas = await scrapeGenreMovies(genre, skip);
+    const metas = await fetchFeedMetas(feedKey);
 
     return {
-      metas,
+      metas: metas.slice(skip, skip + 25),
       cacheMaxAge: 21600,
       staleRevalidate: 3600,
       staleError: 86400
@@ -488,7 +393,6 @@ function buildRouterForConfig(config) {
     if (type !== 'movie') return { meta: null };
 
     const baseMeta = await findMetaById(id, config);
-
     if (!baseMeta) {
       return {
         meta: {
@@ -503,13 +407,8 @@ function buildRouterForConfig(config) {
       };
     }
 
-    const davinottiLink =
-      baseMeta.website ||
-      (Array.isArray(baseMeta.links) && baseMeta.links[0] ? baseMeta.links[0].url : '');
-
-    if (!davinottiLink) {
-      return { meta: baseMeta };
-    }
+    const davinottiLink = baseMeta.website || (baseMeta.links && baseMeta.links[0] ? baseMeta.links[0].url : '');
+    if (!davinottiLink) return { meta: baseMeta };
 
     const detailedMeta = await scrapeMovieDetail(davinottiLink, baseMeta);
     return { meta: detailedMeta };
@@ -545,11 +444,11 @@ function sendText(res, statusCode, text) {
 }
 
 function renderConfigureHtml(reqHost) {
-  const filePath = path.join(__dirname, 'configure.html');
-  let html = fs.readFileSync(filePath, 'utf8');
+  const preferred = ['configure.html', 'configure-2.html'];
+  const fileName = preferred.find(name => fs.existsSync(path.join(__dirname, name))) || 'configure.html';
+  let html = fs.readFileSync(path.join(__dirname, fileName), 'utf8');
   const origin = BASE_URL || reqHost;
-
-  html = html.replace('__BASE_URL__', origin.replace(/\/$/, ''));
+  html = html.replaceAll('__BASE_URL__', origin.replace(/\/$/, ''));
   return html;
 }
 
@@ -560,36 +459,45 @@ const server = http.createServer((req, res) => {
       'Access-Control-Allow-Headers': '*',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
     });
+	
     return res.end();
   }
 
   const host = req.headers.host || `localhost:${PORT}`;
   const protocol = (req.headers['x-forwarded-proto'] || 'http').split(',')[0];
   const reqHost = `${protocol}://${host}`;
-
   const url = new URL(req.url, reqHost);
   const pathname = url.pathname;
 
   if (pathname === '/' || pathname === '/health') {
     return sendJson(res, 200, {
       status: 'ok',
-      name: 'davinotti-str-addon',
+      name: 'davinotti-str-addon-xml',
       configure: `${reqHost}/configure.html`,
       manifest: `${reqHost}/manifest.json`
     });
   }
 
+	if (pathname === '/davinotti-logo.png') {
+	  const logoPath = path.join(__dirname, 'davinotti-logo.png');
+	  if (fs.existsSync(logoPath)) {
+		res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+		return fs.createReadStream(logoPath).pipe(res);
+	  }
+	  return sendText(res, 404, 'Logo non trovato');
+	}
+
+
   if (pathname === '/configure' || pathname === '/configure.html') {
     try {
-      const html = renderConfigureHtml(reqHost);
-      return sendHtml(res, html);
+      return sendHtml(res, renderConfigureHtml(reqHost));
     } catch (err) {
       return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
     }
   }
 
   if (pathname === '/manifest.json') {
-    const router = buildRouterForConfig({ genres: DEFAULT_GENRES });
+    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS });
     return router(req, res, () => sendText(res, 404, 'Not found'));
   }
 
@@ -612,7 +520,6 @@ const server = http.createServer((req, res) => {
     const skip = url.searchParams.get('skip');
     const query = skip ? `?skip=${encodeURIComponent(skip)}` : '';
     const rewritten = `/catalog/movie/${catalogId}.json${query}`;
-
     const originalUrl = req.url;
     req.url = rewritten;
     const router = buildRouterForConfig(config);
@@ -627,7 +534,6 @@ const server = http.createServer((req, res) => {
     const config = decodeConfigSegment(configMetaMatch[1]);
     const metaId = configMetaMatch[2];
     const rewritten = `/meta/movie/${metaId}.json`;
-
     const originalUrl = req.url;
     req.url = rewritten;
     const router = buildRouterForConfig(config);
@@ -638,7 +544,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (/^\/catalog\/movie\/([^/]+)\.json$/.test(pathname) || /^\/meta\/movie\/([^/]+)\.json$/.test(pathname)) {
-    const router = buildRouterForConfig({ genres: DEFAULT_GENRES });
+    const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS });
     return router(req, res, () => sendText(res, 404, 'Not found'));
   }
 
@@ -647,10 +553,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   const localBase = BASE_URL || `http://localhost:${PORT}`;
-  const sampleConfig = encodeConfig({ genres: ['commedia', 'horror', 'western'] });
-
+  const sampleConfig = encodeConfig({ feeds: ['commedia', 'netflix', 'thriller'] });
   console.log('==========================================');
-  console.log('Davinotti Stremio Addon avviato');
+  console.log('Davinotti Stremio Addon XML avviato');
   console.log(`Porta: ${PORT}`);
   console.log(`Base URL: ${localBase}`);
   console.log(`Configure: ${localBase}/configure.html`);
