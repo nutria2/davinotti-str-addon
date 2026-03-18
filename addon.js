@@ -637,31 +637,38 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, reqHost);
   const pathname = url.pathname;
 
-  if (pathname.startsWith('/poster/') && pathname.endsWith('.png')) {
-    try {
-      const rawId = pathname.replace('/poster/', '').replace(/\.png$/, '');
-      const metaId = decodeURIComponent(rawId);
-      const meta = metaCache.get(metaId);
+if (pathname.startsWith('/poster/') && pathname.endsWith('.png')) {
+  try {
+    const rawId = pathname.replace('/poster/', '').replace(/\.png$/, '');
+    const metaId = decodeURIComponent(rawId);
 
-      if (!meta) {
-        return sendText(res, 404, 'Poster metadata non trovati');
-      }
+    let meta = metaCache.get(metaId);
 
-      const posterBuffer = await renderPosterWithRatings(meta);
-      if (!posterBuffer) {
-        return sendText(res, 404, 'Poster non disponibile');
-      }
-
-      res.writeHead(200, {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=21600',
-        'Access-Control-Allow-Origin': '*'
-      });
-      return res.end(posterBuffer);
-    } catch (err) {
-      return sendText(res, 500, `Errore generazione poster: ${err.message}`);
+    if (!meta) {
+      meta = await findMetaById(metaId, { feeds: Object.keys(GENRE_FEEDS) }, reqHost);
     }
+
+    if (!meta) {
+      return sendText(res, 404, 'Poster metadata non trovati');
+    }
+
+    const posterBuffer = await renderPosterWithRatings(meta);
+    if (!posterBuffer) {
+      return sendText(res, 404, 'Poster non disponibile');
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=21600',
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    return res.end(posterBuffer);
+  } catch (err) {
+    console.error('Errore route poster:', err);
+    return sendText(res, 500, `Errore generazione poster: ${err.message}`);
   }
+}
 
   if (pathname === '/' || pathname === '/health') {
     return sendJson(res, 200, {
