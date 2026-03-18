@@ -1,8 +1,8 @@
 // TN (C) 03.2026
 // Addon per la connessione a Davinotti servizi XML per la
 // visualizzazione delle liste in Stremio
-// pagina di configurazione per la scelta dei diversi canali e
-
+// pagina di configurazione per la scelta dei diversi canali
+//
 // 2026-03-14 - TN - Prima versione senza servizi facendo scraping
 // 2026-03-18 - TN - Collegamento ai servizi XML dedicati
 // 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
@@ -27,7 +27,6 @@ const posterCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
 const DAVINOTTI_SUFFIX = ' (fonte DAVINOTTI.COM)';
 const FALLBACK_POSTER = 'https://placehold.co/300x450?text=Davinotti';
 
-// Definizione vettore di censimento dei diversi canali selezionabili da cui poi si estrae la lista
 const GENRE_FEEDS = {
   action: { type: 'genre', slug: 'action', code: '336', name: 'Action' },
   'animali-assassini': { type: 'genre', slug: 'animali-assassini', code: '114', name: 'Animali assassini' },
@@ -125,9 +124,11 @@ function withDavinottiSource(text) {
 function buildFeedUrl(feedKey) {
   const feed = GENRE_FEEDS[feedKey];
   if (!feed) return '';
+
   if (feed.type === 'streaming') {
     return `https://www.davinotti.com/xml/streaming/${feed.slug}`;
   }
+
   return `https://www.davinotti.com/xml/film-per-genere/${feed.slug}/${feed.code}`;
 }
 
@@ -139,17 +140,30 @@ function feedDisplayName(feedKey) {
   return GENRE_FEEDS[feedKey]?.name || feedKey;
 }
 
-function buildManifest(config, reqHost) { {
+function getOrigin(reqHost) {
+  return (BASE_URL || reqHost || `http://localhost:${PORT}`).replace(/\/$/, '');
+}
+
+function getExistingAssetUrl(origin, names) {
+  for (const name of names) {
+    if (fs.existsSync(path.join(__dirname, name))) {
+      return `${origin}/${name}`;
+    }
+  }
+  return undefined;
+}
+
+function buildManifest(config, reqHost) {
   const feeds = config.feeds || DEFAULT_FEEDS;
   const origin = getOrigin(reqHost);
 
   return {
     id: 'community.davinotti.classifiche.xml',
-    version: '2.7.0b',
+    version: '2.8.1b',
     name: 'Davinotti Classifiche',
     description: 'Cataloghi Davinotti per generi e piattaforme streaming',
-    logo: `${origin}/davinotti-logo.png`,
-    background: `${origin}/davinotti-background.jpg`,
+    logo: getExistingAssetUrl(origin, ['davinotti-logo.png', 'davinotti-logo.jpg', 'davinotti-logo.jpeg']),
+    background: getExistingAssetUrl(origin, ['davinotti-background.jpg', 'davinotti-background.jpeg', 'davinotti-background.png']),
     resources: ['catalog', 'meta'],
     types: ['movie'],
     idPrefixes: ['tt', 'dv'],
@@ -164,10 +178,6 @@ function buildManifest(config, reqHost) { {
       configurationRequired: false
     }
   };
-}
-
-function getOrigin(reqHost) {
-  return (BASE_URL || reqHost).replace(/\/$/, '');
 }
 
 function formatRating(value) {
@@ -217,7 +227,7 @@ function extractXmlValue(block, tag) {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const match = block.match(regex);
   if (!match) return '';
-  return cheerio.load(`${match[1]}`, { xmlMode: true }).text().trim();
+  return cheerio.load(match[1], { xmlMode: true }).text().trim();
 }
 
 function mapXmlItemToMeta(itemXml, feedKey) {
@@ -291,6 +301,7 @@ function buildPosterSvg(width, height, imdbText, dvText) {
   const badgeH = Math.max(24, Math.round(bandHeight * 0.55));
   const baselineY = height - Math.round(bandHeight * 0.34);
   const bottomY = height - bandHeight;
+  const dvX = Math.round(width * 0.62);
 
   return Buffer.from(`
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -307,9 +318,9 @@ function buildPosterSvg(width, height, imdbText, dvText) {
   <text x="${padX + Math.round(imdbBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#111111">IMDb</text>
   <text x="${padX + imdbBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(imdbText || '--')}</text>
 
-  <rect x="${Math.round(width * 0.62)}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${dvBadgeW}" height="${badgeH}" fill="#1f8b4c"/>
-  <text x="${Math.round(width * 0.62) + Math.round(dvBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#ffffff">DV</text>
-  <text x="${Math.round(width * 0.62) + dvBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(dvText || '--')}</text>
+  <rect x="${dvX}" y="${bottomY + Math.round((bandHeight - badgeH) / 2)}" rx="4" ry="4" width="${dvBadgeW}" height="${badgeH}" fill="#1f8b4c"/>
+  <text x="${dvX + Math.round(dvBadgeW / 2)}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${labelFontSize}" font-weight="700" text-anchor="middle" fill="#ffffff">DV</text>
+  <text x="${dvX + dvBadgeW + 10}" y="${baselineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${escapeXml(dvText || '--')}</text>
 </svg>`);
 }
 
@@ -370,7 +381,6 @@ async function enrichPreviewWithTmdb(meta, reqHost) {
     background: tmdbData?.backdrop_path
       ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
       : meta.background,
-    description: meta.description,
     releaseInfo: meta.releaseInfo || tmdbData?.release_date || '',
     imdbRating: tmdbData?.vote_average ? String(tmdbData.vote_average) : meta.imdbRating
   };
@@ -401,8 +411,8 @@ async function fetchFeedMetas(feedKey, reqHost) {
     for (const itemXml of items) {
       const baseMeta = mapXmlItemToMeta(itemXml, feedKey);
       if (!baseMeta || seen.has(baseMeta.id)) continue;
-      seen.add(baseMeta.id);
 
+      seen.add(baseMeta.id);
       const enriched = await enrichPreviewWithTmdb(baseMeta, reqHost);
       metas.push(enriched);
 
@@ -453,7 +463,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
 
     const detailParts = [];
     if (baseMeta.releaseInfo) detailParts.push(`Anno: ${baseMeta.releaseInfo}`);
-    if (baseMeta.genres && baseMeta.genres.length) detailParts.push(`Genere: ${baseMeta.genres.join(', ')}`);
+    if (baseMeta.genres?.length) detailParts.push(`Genere: ${baseMeta.genres.join(', ')}`);
     if (baseMeta.imdbRating) detailParts.push(`IMDb: ${formatRating(baseMeta.imdbRating)}`);
     if (baseMeta.davinottiVotes) detailParts.push(`Voto Davinotti: ${formatRating(baseMeta.davinottiVotes)}`);
     if (baseMeta.davinottiReviews) detailParts.push(`Recensioni: ${baseMeta.davinottiReviews}`);
@@ -495,7 +505,7 @@ async function findMetaById(id, config, reqHost) {
   const cached = metaCache.get(id);
   if (cached) return cached;
 
-  const feeds = config.feeds && config.feeds.length ? config.feeds : DEFAULT_FEEDS;
+  const feeds = config.feeds?.length ? config.feeds : DEFAULT_FEEDS;
   for (const feedKey of feeds) {
     const metas = await fetchFeedMetas(feedKey, reqHost);
     const found = metas.find(item => item.id === id || item.davinottiId === id || item.imdbId === id);
@@ -509,11 +519,12 @@ async function findMetaById(id, config, reqHost) {
 }
 
 function buildRouterForConfig(config, reqHost) {
-  const manifest = buildManifest(config,reqHost);
+  const manifest = buildManifest(config, reqHost);
   const builder = new addonBuilder(manifest);
 
   builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type !== 'movie') return { metas: [] };
+
     const match = id.match(/^davinotti_(.+)$/);
     if (!match) return { metas: [] };
 
@@ -547,7 +558,7 @@ function buildRouterForConfig(config, reqHost) {
       };
     }
 
-    const davinottiLink = baseMeta.website || (baseMeta.links && baseMeta.links[0] ? baseMeta.links[0].url : '');
+    const davinottiLink = baseMeta.website || baseMeta.links?.[0]?.url || '';
     if (!davinottiLink) return { meta: baseMeta };
 
     const detailedMeta = await scrapeMovieDetail(davinottiLink, baseMeta);
@@ -583,14 +594,26 @@ function sendText(res, statusCode, text) {
   res.end(text);
 }
 
+function sendStaticFile(res, filePath, contentType) {
+  if (!fs.existsSync(filePath)) {
+    return sendText(res, 404, 'File non trovato');
+  }
+
+  res.writeHead(200, {
+    'Content-Type': contentType,
+    'Access-Control-Allow-Origin': '*'
+  });
+  return fs.createReadStream(filePath).pipe(res);
+}
+
 function renderConfigureHtml(reqHost) {
   const preferred = ['configure.html', 'configure-2.html'];
   const fileName = preferred.find(name => fs.existsSync(path.join(__dirname, name))) || 'configure.html';
   let html = fs.readFileSync(path.join(__dirname, fileName), 'utf8');
-  const origin = BASE_URL || reqHost;
-  const manifestVersion = buildManifest({ feeds: DEFAULT_FEEDS },reqHost).version;
+  const origin = getOrigin(reqHost);
+  const manifestVersion = buildManifest({ feeds: DEFAULT_FEEDS }, reqHost).version;
 
-  html = html.replaceAll('__BASE_URL__', origin.replace(/\/$/, ''));
+  html = html.replaceAll('__BASE_URL__', origin);
   html = html.replaceAll('__ADDON_VERSION__', manifestVersion);
 
   return html;
@@ -632,7 +655,6 @@ const server = http.createServer(async (req, res) => {
         'Cache-Control': 'public, max-age=21600',
         'Access-Control-Allow-Origin': '*'
       });
-
       return res.end(posterBuffer);
     } catch (err) {
       return sendText(res, 500, `Errore generazione poster: ${err.message}`);
@@ -643,18 +665,27 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, {
       status: 'ok',
       name: 'davinotti-str-addon-xml',
-      configure: `${reqHost}/configure.html`,
-      manifest: `${reqHost}/manifest.json`
+      configure: `${getOrigin(reqHost)}/configure.html`,
+      manifest: `${getOrigin(reqHost)}/manifest.json`
     });
   }
 
   if (pathname === '/davinotti-logo.png') {
-    const logoPath = path.join(__dirname, 'davinotti-logo.png');
-    if (fs.existsSync(logoPath)) {
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
-      return fs.createReadStream(logoPath).pipe(res);
-    }
-    return sendText(res, 404, 'Logo non trovato');
+    return sendStaticFile(res, path.join(__dirname, 'davinotti-logo.png'), 'image/png');
+  }
+
+  if (pathname === '/davinotti-logo.jpg' || pathname === '/davinotti-logo.jpeg') {
+    const fileName = pathname.slice(1);
+    return sendStaticFile(res, path.join(__dirname, fileName), 'image/jpeg');
+  }
+
+  if (pathname === '/davinotti-background.jpg' || pathname === '/davinotti-background.jpeg') {
+    const fileName = pathname.slice(1);
+    return sendStaticFile(res, path.join(__dirname, fileName), 'image/jpeg');
+  }
+
+  if (pathname === '/davinotti-background.png') {
+    return sendStaticFile(res, path.join(__dirname, 'davinotti-background.png'), 'image/png');
   }
 
   if (pathname === '/configure' || pathname === '/configure.html') {
@@ -721,9 +752,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  const localBase = BASE_URL || `http://localhost:${PORT}`;
+  const localBase = getOrigin(`http://localhost:${PORT}`);
   const sampleConfig = encodeConfig({ feeds: ['commedia', 'netflix', 'fantascienza'] });
   const appVersion = buildManifest({ feeds: DEFAULT_FEEDS }, localBase).version;
+
   console.log('==========================================');
   console.log('Davinotti Stremio Addon XML avviato');
   console.log(`Versione: ${appVersion}`);
