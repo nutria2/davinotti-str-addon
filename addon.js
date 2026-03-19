@@ -6,9 +6,9 @@
 // 2026-03-14 - TN - Prima versione senza servizi facendo scraping
 // 2026-03-18 - TN - Collegamento ai servizi XML dedicati
 // 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
+// 2026-03-19 - Ottimizzazioni cache, poster disk cache, fallback controllato, concorrenza limitata
 
 
-const ADDON_VERSION = '3.0.3';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -18,16 +18,25 @@ const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
 const sharp = require('sharp');
 
+const ADDON_VERSION = '3.0.4';
+
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
-const cache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+const feedCache = new NodeCache({ stdTTL: 43200, checkperiod: 120 });
 const metaCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+const tmdbCache = new NodeCache({ stdTTL: 43200, checkperiod: 120 });
 const posterCache = new NodeCache({ stdTTL: 21600, checkperiod: 120 });
+const missingMetaCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 
 const DAVINOTTI_SUFFIX = ' (fonte DAVINOTTI.COM)';
 const FALLBACK_POSTER = 'https://placehold.co/300x450?text=Davinotti';
+
+const POSTER_CACHE_DIR = path.join(__dirname, 'poster-cache');
+if (!fs.existsSync(POSTER_CACHE_DIR)) {
+  fs.mkdirSync(POSTER_CACHE_DIR, { recursive: true });
+}
 
 const GENRE_FEEDS = {
   action: { type: 'genre', slug: 'action', code: '336', name: 'Action' },
@@ -181,14 +190,10 @@ function buildManifest(config, reqHost) {
     }
   };
 }
-/*
+
 function formatRating(value) {
   const num = Number(value);
   return Number.isFinite(num) ? `${num.toFixed(1)}/10` : null;
-}*/
-function formatRating(value) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num.toFixed(1) : null;
 }
 
 function escapeXml(value) {
@@ -202,23 +207,36 @@ function escapeXml(value) {
 async function fetchTmdbMovieById(tmdbId) {
   if (!TMDB_API_KEY || !tmdbId) return null;
 
+  const cacheKey = `tmdb:${tmdbId}`;
+  const cached = tmdbCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   try {
     const response = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}`, {
-      timeout: 15000,
+      timeout: 10000,
       params: {
         api_key: TMDB_API_KEY,
         language: 'it-IT'
       }
     });
-    return response.data || null;
+
+    const data = response.data || null;
+    tmdbCache.set(cacheKey, data);
+    return data;
   } catch (err) {
+    if (err.response?.status === 404) {
+      tmdbCache.set(cacheKey, null);
+      console.warn(`TMDB movie/${tmdbId} non trovato`);
+      return null;
+    }
+
     console.error(`Errore TMDB movie/${tmdbId}:`, err.message);
     return null;
   }
 }
 
 function parseXmlItems(xml) {
-  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
   const items = [];
   let match;
 
@@ -238,6 +256,7 @@ function extractXmlValue(block, tag) {
 
 function mapXmlItemToMeta(itemXml, feedKey) {
   const feed = GENRE_FEEDS[feedKey];
+  if (!feed) return null;
 
   const title = extractXmlValue(itemXml, 't');
   const year = extractXmlValue(itemXml, 'y');
@@ -289,25 +308,26 @@ function mapXmlItemToMeta(itemXml, feedKey) {
 async function downloadBuffer(url) {
   const response = await axios.get(url, {
     responseType: 'arraybuffer',
-    timeout: 20000,
+    timeout: 15000,
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/2.0; +Render)'
     }
   });
+
   return Buffer.from(response.data);
 }
 
 function buildPosterSvg(width, height, imdbText, dvText) {
   const bandHeight = Math.max(64, Math.round(height * 0.145));
   const padX = Math.max(12, Math.round(width * 0.04));
-  const fontSize = Math.max(24, Math.round(width * 0.072));
+  const fontSize = Math.max(27, Math.round(width * 0.080));
   const labelFontSize = Math.max(14, Math.round(width * 0.034));
   const imdbBadgeW = Math.max(44, Math.round(width * 0.15));
   const dvBadgeW = Math.max(34, Math.round(width * 0.10));
   const badgeH = Math.max(28, Math.round(bandHeight * 0.52));
   const baselineY = height - Math.round(bandHeight * 0.28);
   const bottomY = height - bandHeight;
-  const dvX = Math.round(width * 0.60);
+  const dvX = Math.round(width * 0.605);
 
   return Buffer.from(`
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -330,16 +350,32 @@ function buildPosterSvg(width, height, imdbText, dvText) {
 </svg>`);
 }
 
+function buildPosterCacheKey(meta) {
+  return `poster:${meta.id}:${meta.imdbRating || ''}:${meta.davinottiVotes || ''}:${meta.basePoster || meta.poster || ''}`;
+}
+
+function buildPosterCachePath(meta) {
+  const safeName = buildPosterCacheKey(meta).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return path.join(POSTER_CACHE_DIR, `${safeName}.png`);
+}
+
 async function renderPosterWithRatings(meta) {
-  const cacheKey = `poster:${meta.id}:${meta.imdbRating || ''}:${meta.davinottiVotes || ''}:${meta.basePoster || meta.poster || ''}`;
+  const cacheKey = buildPosterCacheKey(meta);
   const cached = posterCache.get(cacheKey);
   if (cached) return cached;
+
+  const filePath = buildPosterCachePath(meta);
+  if (fs.existsSync(filePath)) {
+    const fileBuffer = fs.readFileSync(filePath);
+    posterCache.set(cacheKey, fileBuffer);
+    return fileBuffer;
+  }
 
   const sourcePoster = meta.basePoster || meta.poster;
   if (!sourcePoster || sourcePoster.includes('placehold.co')) return null;
 
   const originalBuffer = await downloadBuffer(sourcePoster);
-  const image = sharp(originalBuffer);
+  const image = sharp(originalBuffer, { failOn: 'none' });
   const info = await image.metadata();
 
   const width = info.width || 300;
@@ -359,6 +395,7 @@ async function renderPosterWithRatings(meta) {
     .png()
     .toBuffer();
 
+  fs.writeFileSync(filePath, output);
   posterCache.set(cacheKey, output);
   return output;
 }
@@ -377,7 +414,7 @@ async function enrichPreviewWithTmdb(meta, reqHost) {
 
   const tmdbData = await fetchTmdbMovieById(meta.tmdbId);
   const basePoster = tmdbData?.poster_path
-    ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`
+    ? `https://image.tmdb.org/t/p/w342${tmdbData.poster_path}`
     : meta.poster;
 
   return {
@@ -392,9 +429,26 @@ async function enrichPreviewWithTmdb(meta, reqHost) {
   };
 }
 
+async function mapWithConcurrency(items, limit, asyncMapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= items.length) break;
+      results[current] = await asyncMapper(items[current], current);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 async function fetchFeedMetas(feedKey, reqHost) {
   const cacheKey = `feed:${feedKey}:${getOrigin(reqHost)}`;
-  const cached = cache.get(cacheKey);
+  const cached = feedCache.get(cacheKey);
   if (cached) return cached;
 
   const url = buildFeedUrl(feedKey);
@@ -411,22 +465,38 @@ async function fetchFeedMetas(feedKey, reqHost) {
 
     const xml = response.data;
     const items = parseXmlItems(xml);
-    const metas = [];
     const seen = new Set();
+    const baseMetas = [];
 
     for (const itemXml of items) {
       const baseMeta = mapXmlItemToMeta(itemXml, feedKey);
       if (!baseMeta || seen.has(baseMeta.id)) continue;
-
       seen.add(baseMeta.id);
-      const enriched = await enrichPreviewWithTmdb(baseMeta, reqHost);
-      metas.push(enriched);
-
-      metaCache.set(enriched.id, enriched);
-      if (enriched.davinottiId) metaCache.set(enriched.davinottiId, enriched);
+      baseMetas.push(baseMeta);
     }
 
-    cache.set(cacheKey, metas);
+    const enrichedList = await mapWithConcurrency(baseMetas, 5, async (baseMeta) => {
+      try {
+        return await enrichPreviewWithTmdb(baseMeta, reqHost);
+      } catch (err) {
+        console.warn(`Errore enrich TMDB ${baseMeta.id}: ${err.message}`);
+        return {
+          ...baseMeta,
+          basePoster: baseMeta.poster,
+          poster: `${getOrigin(reqHost)}/poster/${encodeURIComponent(baseMeta.id)}.png`
+        };
+      }
+    });
+
+    const metas = enrichedList.filter(Boolean);
+
+    for (const enriched of metas) {
+      metaCache.set(enriched.id, enriched);
+      if (enriched.davinottiId) metaCache.set(enriched.davinottiId, enriched);
+      if (enriched.imdbId) metaCache.set(enriched.imdbId, enriched);
+    }
+
+    feedCache.set(cacheKey, metas);
     return metas;
   } catch (err) {
     console.error(`Errore feed XML ${feedKey}:`, err.message);
@@ -641,38 +711,47 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, reqHost);
   const pathname = url.pathname;
 
-if (pathname.startsWith('/poster/') && pathname.endsWith('.png')) {
-  try {
-    const rawId = pathname.replace('/poster/', '').replace(/\.png$/, '');
-    const metaId = decodeURIComponent(rawId);
+  if (pathname.startsWith('/poster/') && pathname.endsWith('.png')) {
+    try {
+      const rawId = pathname.replace('/poster/', '').replace(/\.png$/, '');
+      const metaId = decodeURIComponent(rawId);
 
-    let meta = metaCache.get(metaId);
+      let meta = metaCache.get(metaId);
 
-    if (!meta) {
-      meta = await findMetaById(metaId, { feeds: Object.keys(GENRE_FEEDS) }, reqHost);
+      if (!meta && !missingMetaCache.get(metaId)) {
+        meta = await findMetaById(metaId, { feeds: DEFAULT_FEEDS }, reqHost);
+
+        if (!meta) {
+          meta = await findMetaById(metaId, { feeds: Object.keys(GENRE_FEEDS) }, reqHost);
+        }
+
+        if (!meta) {
+          missingMetaCache.set(metaId, true);
+          return sendText(res, 404, 'Poster metadata non trovati');
+        }
+      }
+
+      if (!meta) {
+        return sendText(res, 404, 'Poster metadata non trovati');
+      }
+
+      const posterBuffer = await renderPosterWithRatings(meta);
+      if (!posterBuffer) {
+        return sendText(res, 404, 'Poster non disponibile');
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=21600',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      return res.end(posterBuffer);
+    } catch (err) {
+      console.error('Errore route poster:', err);
+      return sendText(res, 500, `Errore generazione poster: ${err.message}`);
     }
-
-    if (!meta) {
-      return sendText(res, 404, 'Poster metadata non trovati');
-    }
-
-    const posterBuffer = await renderPosterWithRatings(meta);
-    if (!posterBuffer) {
-      return sendText(res, 404, 'Poster non disponibile');
-    }
-
-    res.writeHead(200, {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=21600',
-      'Access-Control-Allow-Origin': '*'
-    });
-
-    return res.end(posterBuffer);
-  } catch (err) {
-    console.error('Errore route poster:', err);
-    return sendText(res, 500, `Errore generazione poster: ${err.message}`);
   }
-}
 
   if (pathname === '/' || pathname === '/health') {
     return sendJson(res, 200, {
