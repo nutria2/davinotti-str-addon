@@ -506,6 +506,7 @@ async function fetchFeedMetas(feedKey, reqHost) {
 }
 
 //funzione di riempimento della scheda
+/* BASE
 async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   const cacheKey = `detail:${baseMeta.id}`;
   const cached = metaCache.get(cacheKey);
@@ -577,7 +578,107 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     if (baseMeta.davinottiId) metaCache.set(baseMeta.davinottiId, fallback);
     return fallback;
   }
+}*/
+async function scrapeMovieDetail(davinottiUrl, baseMeta) {
+  const cacheKey = `detail:${baseMeta.id}`;
+  const cached = metaCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const response = await axios.get(davinottiUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; DavinottiStremioAddon/2.0; +Render)'
+      }
+    });
+
+    const $ = cheerio.load(response.data);
+    const pageTitle = $('h1').first().text().trim() || baseMeta.name;
+
+    // Durata (es. "110 min")
+    let runtime = $('span.field-duration').text().trim() ||
+                  $('div.field-duration .field-item').first().text().trim() ||
+                  '';
+
+    // Anno (già da XML, ma conferma)
+    const year = baseMeta.releaseInfo || $('span.field-year').text().trim() || '';
+
+    // Regista
+    let director = $('span.field-director .field-item a').first().text().trim() ||
+                   $('div.field-director .field-item').first().text().trim() ||
+                   '';
+
+    // Cast (primi 3 attori)
+    const actors = [];
+    $('span.field-actors .field-item a, div.field-actors .field-item a').slice(0, 3).each((i, el) => {
+      actors.push($(el).text().trim());
+    });
+
+    // Trama/sinossi
+    let description = $('meta[name="description"]').attr('content') ||
+                      $('meta[property="og:description"]').attr('content') ||
+                      $('.field-name-body').text().trim() ||
+                      $('.node-film .content').text().trim() ||
+                      $('.content').first().text().trim() ||
+                      baseMeta.description;
+
+    if (description) {
+      description = description.replace(/\s+/g, ' ').trim().slice(0, 1400);
+    }
+
+    // TMDB per backdrop e rating
+    const tmdbData = baseMeta.tmdbId ? await fetchTmdbMovieById(baseMeta.tmdbId) : null;
+    const background = tmdbData?.backdrop_path
+      ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}`
+      : baseMeta.background;
+
+    // Blocco info sintetico
+    const detailParts = [];
+    if (runtime) detailParts.push(`${runtime}`);
+    if (year) detailParts.push(`(${year})`);
+    if (baseMeta.imdbRating) detailParts.push(`${formatRating(baseMeta.imdbRating)} IMDb`);
+    if (baseMeta.davinottiVotes) detailParts.push(`${formatRating(baseMeta.davinottiVotes)} DV`);
+    if (director) detailParts.push(`Regia: ${director}`);
+
+    const fullDescription = [
+      detailParts.length ? detailParts.join(' ') : '',
+      description || baseMeta.description || ''
+    ].filter(Boolean).join('\n\n');
+
+    const detailed = {
+      ...baseMeta,
+      name: pageTitle,
+      runtime: runtime || undefined,
+      releaseInfo: year || baseMeta.releaseInfo,
+      director: director || undefined,
+      cast: actors.length ? actors : undefined,
+      poster: baseMeta.poster,
+      background,
+      description: withDavinottiSource(fullDescription),
+      website: davinottiUrl,
+      links: [
+        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl }
+      ]
+    };
+
+    metaCache.set(cacheKey, detailed);
+    metaCache.set(detailed.id, detailed);
+    if (detailed.davinottiId) metaCache.set(detailed.davinottiId, detailed);
+    return detailed;
+  } catch (err) {
+    console.error(`Errore dettaglio ${davinottiUrl}:`, err.message);
+    const fallback = {
+      ...baseMeta,
+      description: withDavinottiSource(baseMeta.description),
+      website: davinottiUrl
+    };
+    metaCache.set(cacheKey, fallback);
+    metaCache.set(baseMeta.id, fallback);
+    if (baseMeta.davinottiId) metaCache.set(baseMeta.davinottiId, fallback);
+    return fallback;
+  }
 }
+
 
 async function findMetaById(id, config, reqHost) {
   const cached = metaCache.get(id);
