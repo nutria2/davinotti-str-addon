@@ -177,7 +177,7 @@ function buildManifest(config, reqHost) {
     background: getExistingAssetUrl(origin, ['davinotti-background.jpg', 'davinotti-background.jpeg', 'davinotti-background.png']),
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['dv', 'tt'],
+    idPrefixes: ['tt', 'dv'],
     catalogs: feeds.map(feedKey => ({
       type: 'movie',
       id: buildCatalogId(feedKey),
@@ -271,8 +271,8 @@ function mapXmlItemToMeta(itemXml, feedKey) {
   const imdbId = imdbIdRaw && imdbIdRaw.startsWith('tt') ? imdbIdRaw : '';
   const tmdbId = tmdbIdRaw && /^\d+$/.test(tmdbIdRaw) ? tmdbIdRaw : '';
   const davinottiId = dvIdRaw ? `dv${dvIdRaw}` : '';
-  //const finalId = imdbId || davinottiId;
-  const finalId =  davinottiId || imdbId;
+  const finalId = imdbId || davinottiId;
+  //const finalId =  davinottiId || imdbId;
 
   if (!title || !finalId || !link) {
     return null;
