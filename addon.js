@@ -7,7 +7,7 @@
 // 2026-03-18 - TN - Collegamento ai servizi XML dedicati
 // 2026-03-18 - TN - Poster custom con rating IMDb + Davinotti via sharp
 // 2026-03-19 - Ottimizzazioni cache, poster disk cache, fallback controllato, concorrenza limitata
-
+// 2026-03-19 - Dominanza DV nella scheda
 
 const http = require('http');
 const fs = require('fs');
@@ -18,7 +18,7 @@ const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
 const sharp = require('sharp');
 
-const ADDON_VERSION = '3.0.4';
+const ADDON_VERSION = '3.0.5';
 
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
@@ -177,7 +177,7 @@ function buildManifest(config, reqHost) {
     background: getExistingAssetUrl(origin, ['davinotti-background.jpg', 'davinotti-background.jpeg', 'davinotti-background.png']),
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['tt', 'dv'],
+    idPrefixes: ['dv', 'tt'],
     catalogs: feeds.map(feedKey => ({
       type: 'movie',
       id: buildCatalogId(feedKey),
@@ -271,7 +271,8 @@ function mapXmlItemToMeta(itemXml, feedKey) {
   const imdbId = imdbIdRaw && imdbIdRaw.startsWith('tt') ? imdbIdRaw : '';
   const tmdbId = tmdbIdRaw && /^\d+$/.test(tmdbIdRaw) ? tmdbIdRaw : '';
   const davinottiId = dvIdRaw ? `dv${dvIdRaw}` : '';
-  const finalId = imdbId || davinottiId;
+  //const finalId = imdbId || davinottiId;
+  const finalId =  davinottiId || imdbId;
 
   if (!title || !finalId || !link) {
     return null;
@@ -504,6 +505,7 @@ async function fetchFeedMetas(feedKey, reqHost) {
   }
 }
 
+//funzione di riempimento della scheda
 async function scrapeMovieDetail(davinottiUrl, baseMeta) {
   const cacheKey = `detail:${baseMeta.id}`;
   const cached = metaCache.get(cacheKey);
