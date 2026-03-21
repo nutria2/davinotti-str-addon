@@ -657,7 +657,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
       description: withDavinottiSource(fullDescription),
       website: davinottiUrl,
       links: [
-        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl }
+        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl },
 		{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
       ]
     };
