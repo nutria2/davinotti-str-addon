@@ -774,6 +774,15 @@ function sendText(res, statusCode, text) {
   res.end(text);
 }
 
+function sendRedirect(res, location, statusCode = 302) {
+  res.writeHead(statusCode, {
+    'Location': location,
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end();
+}
+
+
 function sendStaticFile(res, filePath, contentType) {
   if (!fs.existsSync(filePath)) {
     return sendText(res, 404, 'File non trovato');
@@ -884,13 +893,38 @@ const server = http.createServer(async (req, res) => {
     return sendStaticFile(res, path.join(__dirname, 'davinotti-background.png'), 'image/png');
   }
 
-  if (pathname === '/configure' || pathname === '/configure.html') {
-    try {
-      return sendHtml(res, renderConfigureHtml(reqHost));
-    } catch (err) {
-      return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
-    }
+if (pathname === '/configure') {
+  return sendRedirect(res, '/configure.html');
+}
+
+if (pathname === '/configure.html') {
+  try {
+    return sendHtml(res, renderConfigureHtml(reqHost));
+  } catch (err) {
+    return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
   }
+}
+
+const configConfigureMatch = pathname.match(/^\/([^/]+)\/configure(?:\.html)?$/);
+if (configConfigureMatch) {
+  return sendRedirect(res, '/configure.html');
+}
+
+  
+	
+
+//Fix per chiamata impostazioni da lista addon di stremio
+	const configConfigureMatch = pathname.match(/^\/([^/]+)\/configure(?:\.html)?$/);
+	if (configConfigureMatch) {
+	  try {
+		return sendHtml(res, renderConfigureHtml(reqHost));
+	  } catch (err) {
+		return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
+	  }
+	}
+
+  
+  
 
   if (pathname === '/manifest.json') {
     const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS }, reqHost);
