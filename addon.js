@@ -18,7 +18,7 @@ const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
 const sharp = require('sharp');
 
-const ADDON_VERSION = '3.0.6';
+const ADDON_VERSION = '3.0.7';
 
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
