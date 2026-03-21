@@ -297,7 +297,7 @@ function mapXmlItemToMeta(itemXml, feedKey) {
 	website: link,
     links: [{ name: 'Scheda Davinotti', category: 'read', url: link },
 			{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
-      ]],
+      ],
     davinottiId,
     imdbId: imdbId || undefined,
     tmdbId: tmdbId || undefined,
