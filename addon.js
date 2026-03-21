@@ -177,7 +177,7 @@ function buildManifest(config, reqHost) {
     background: getExistingAssetUrl(origin, ['davinotti-background.jpg', 'davinotti-background.jpeg', 'davinotti-background.png']),
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['tt'idPrefixes: ['tt', 'dv'],
+    idPrefixes: ['tt', 'dv'],
     catalogs: feeds.map(feedKey => ({
       type: 'movie',
       id: buildCatalogId(feedKey),
