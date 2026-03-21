@@ -18,7 +18,7 @@ const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
 const sharp = require('sharp');
 
-const ADDON_VERSION = '3.0.7';
+const ADDON_VERSION = '3.0.6';
 
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
@@ -294,10 +294,8 @@ function mapXmlItemToMeta(itemXml, feedKey) {
     description: descriptionParts.length ? descriptionParts.join(' • ') : fallbackDescription,
     genres: [category || feed.name],
     releaseInfo: year || '',
-	website: link,
-    links: [{ name: 'Scheda Davinotti', category: 'read', url: link },
-			{ name: `Voto Davinotti: ${votes}`, category: 'read', url: davinottiUrl }
-      ],
+    links: [{ name: 'Scheda Davinotti', category: 'read', url: link }],
+    website: link,
     davinottiId,
     imdbId: imdbId || undefined,
     tmdbId: tmdbId || undefined,
@@ -659,8 +657,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
       description: withDavinottiSource(fullDescription),
       website: davinottiUrl,
       links: [
-        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl },
-		{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
+        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl }
       ]
     };
 
@@ -673,11 +670,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     const fallback = {
       ...baseMeta,
       description: withDavinottiSource(baseMeta.description),
-      website: davinottiUrl,
-	  links: [
-        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl },
-		{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
-      ]
+      website: davinottiUrl
     };
     metaCache.set(cacheKey, fallback);
     metaCache.set(baseMeta.id, fallback);
@@ -899,20 +892,18 @@ const server = http.createServer(async (req, res) => {
     return sendStaticFile(res, path.join(__dirname, 'davinotti-background.png'), 'image/png');
   }
 
-if (pathname === '/configure') {
+  if (pathname === '/configure') {
   return sendRedirect(res, '/configure.html');
 }
 
 if (pathname === '/configure.html') {
-  try {
-    return sendHtml(res, renderConfigureHtml(reqHost));
-  } catch (err) {
-    return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
+      try {
+      return sendHtml(res, renderConfigureHtml(reqHost));
+    } catch (err) {
+      return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
+    }
   }
-}
-
-
-//Fix per chiamata impostazioni da lista addon di stremio
+  //Fix per chiamata impostazioni da lista addon di stremio
 	const configConfigureMatch = pathname.match(/^\/([^/]+)\/configure(?:\.html)?$/);
 	if (configConfigureMatch) {
 	  try {
@@ -921,9 +912,6 @@ if (pathname === '/configure.html') {
 		return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
 	  }
 	}
-
-  
-  
 
   if (pathname === '/manifest.json') {
     const router = buildRouterForConfig({ feeds: DEFAULT_FEEDS }, reqHost);
