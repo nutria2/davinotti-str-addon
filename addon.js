@@ -905,19 +905,12 @@ if (pathname === '/configure.html') {
   }
 }
 
-const configConfigureMatch = pathname.match(/^\/([^/]+)\/configure(?:\.html)?$/);
-if (configConfigureMatch) {
-  return sendRedirect(res, '/configure.html');
-}
-
-  
-	
 
 //Fix per chiamata impostazioni da lista addon di stremio
 	const configConfigureMatch = pathname.match(/^\/([^/]+)\/configure(?:\.html)?$/);
 	if (configConfigureMatch) {
 	  try {
-		return sendHtml(res, renderConfigureHtml(reqHost));
+		return sendRedirect(res, '/configure.html');
 	  } catch (err) {
 		return sendText(res, 500, `Errore caricamento configure.html: ${err.message}`);
 	  }
