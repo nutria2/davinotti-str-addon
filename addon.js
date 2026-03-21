@@ -177,7 +177,7 @@ function buildManifest(config, reqHost) {
     background: getExistingAssetUrl(origin, ['davinotti-background.jpg', 'davinotti-background.jpeg', 'davinotti-background.png']),
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['tt', 'dv'],
+    idPrefixes: ['tt'idPrefixes: ['tt', 'dv'],
     catalogs: feeds.map(feedKey => ({
       type: 'movie',
       id: buildCatalogId(feedKey),
@@ -294,8 +294,10 @@ function mapXmlItemToMeta(itemXml, feedKey) {
     description: descriptionParts.length ? descriptionParts.join(' • ') : fallbackDescription,
     genres: [category || feed.name],
     releaseInfo: year || '',
-    links: [{ name: 'Scheda Davinotti', category: 'read', url: link }],
-    website: link,
+	website: link,
+    links: [{ name: 'Scheda Davinotti', category: 'read', url: link },
+			{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
+      ]],
     davinottiId,
     imdbId: imdbId || undefined,
     tmdbId: tmdbId || undefined,
@@ -671,7 +673,11 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     const fallback = {
       ...baseMeta,
       description: withDavinottiSource(baseMeta.description),
-      website: davinottiUrl
+      website: davinottiUrl,
+	  links: [
+        { name: 'Scheda Davinotti', category: 'read', url: davinottiUrl },
+		{ name: `Voto Davinotti: ${formatRating(baseMeta.davinottiVotes) || 'n/d'}`, category: 'read', url: davinottiUrl }
+      ]
     };
     metaCache.set(cacheKey, fallback);
     metaCache.set(baseMeta.id, fallback);
