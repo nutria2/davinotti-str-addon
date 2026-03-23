@@ -18,7 +18,7 @@ const cheerio = require('cheerio');
 const NodeCache = require('node-cache');
 const sharp = require('sharp');
 
-const ADDON_VERSION = '3.0.6';
+const ADDON_VERSION = '3.0.9';
 
 const PORT = process.env.PORT || 7000;
 const BASE_URL = process.env.BASE_URL || '';
@@ -664,6 +664,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     metaCache.set(cacheKey, detailed);
     metaCache.set(detailed.id, detailed);
     if (detailed.davinottiId) metaCache.set(detailed.davinottiId, detailed);
+	if (detailed.imdbId) metaCache.set(detailed.imdbId, detailed);
     return detailed;
   } catch (err) {
     console.error(`Errore dettaglio ${davinottiUrl}:`, err.message);
@@ -675,6 +676,7 @@ async function scrapeMovieDetail(davinottiUrl, baseMeta) {
     metaCache.set(cacheKey, fallback);
     metaCache.set(baseMeta.id, fallback);
     if (baseMeta.davinottiId) metaCache.set(baseMeta.davinottiId, fallback);
+	if (baseMeta.imdbId) metaCache.set(baseMeta.imdbId, fallback);
     return fallback;
   }
 }
@@ -719,30 +721,37 @@ function buildRouterForConfig(config, reqHost) {
     };
   });
 
-  builder.defineMetaHandler(async ({ type, id }) => {
-    if (type !== 'movie') return { meta: null };
+	//Sistemazione con fall back su descrizioni di DAVINOTTI (ma probabile non agganci le fonti di altri addon 
+	builder.defineMetaHandler(async ({ type, id }) => {
+	  if (type !== 'movie') return { meta: null };
 
-    const baseMeta = await findMetaById(id, config, reqHost);
-    if (!baseMeta) {
-      return {
-        meta: {
-          id,
-          type: 'movie',
-          name: 'Titolo non disponibile',
-          poster: FALLBACK_POSTER,
-          posterShape: 'poster',
-          description: 'Dettagli non disponibili',
-          genres: []
-        }
-      };
-    }
+	  let baseMeta = await findMetaById(id, config, reqHost);
 
-    const davinottiLink = baseMeta.website || baseMeta.links?.[0]?.url || '';
-    if (!davinottiLink) return { meta: baseMeta };
+	  if (!baseMeta) {
+		baseMeta = await findMetaById(id, { feeds: Object.keys(GENRE_FEEDS) }, reqHost);
+	  }
 
-    const detailedMeta = await scrapeMovieDetail(davinottiLink, baseMeta);
-    return { meta: detailedMeta };
-  });
+	  if (!baseMeta) {
+		return {
+		  meta: {
+			id,
+			type: 'movie',
+			name: 'Titolo non disponibile',
+			poster: FALLBACK_POSTER,
+			posterShape: 'poster',
+			description: 'Dettagli non disponibili',
+			genres: []
+		  }
+		};
+	  }
+
+	  const davinottiLink = baseMeta.website || baseMeta.links?.[0]?.url || '';
+	  if (!davinottiLink) return { meta: baseMeta };
+
+	  const detailedMeta = await scrapeMovieDetail(davinottiLink, baseMeta);
+	  return { meta: detailedMeta };
+	});
+
 
   return getRouter(builder.getInterface());
 }
@@ -807,6 +816,9 @@ function renderConfigureHtml(reqHost) {
   return html;
 }
 
+
+
+//################################### MAIN DEL PROGETTO ################################### 
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
